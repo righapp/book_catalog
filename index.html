@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>קטלוג הספרייה שלי</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="nav-brand">
+      <span class="nav-icon">📚</span>
+      <span>קטלוג הספרייה</span>
+    </div>
+    <div class="nav-search">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="searchInput" placeholder="חפש לפי שם ספר, סופר, מיקום..." autocomplete="off">
+      <button class="search-clear" id="searchClear">✕</button>
+    </div>
+    <button class="btn-add-nav" id="addBookBtn">＋ הוסף</button>
+  </nav>
+
+  <!-- Stats Bar -->
+  <div class="stats-bar" id="statsBar">
+    <div class="stats-left">
+      <div class="stat-item">
+        <span class="stat-value" id="statTotalBooks">0</span>
+        <span class="stat-label">ספרים בסך הכל</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item">
+        <span class="stat-value" id="statFilteredBooks">0</span>
+        <span class="stat-label">מוצגים</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item">
+        <span class="stat-value" id="statTotalCabinets">0</span>
+        <span class="stat-label">ארונות</span>
+      </div>
+    </div>
+    <span class="mobile-count" id="mobileCount"></span>
+    <div class="stats-right">
+      <div class="sort-wrapper">
+        <button class="btn-icon" id="sortBtn">↕ מיין לפי</button>
+        <div class="sort-dropdown" id="sortDropdown">
+          <div class="sort-dropdown-handle"></div>
+          <div class="sort-option" data-sort="name-asc">שם ספר (א&thinsp;→&thinsp;ת)</div>
+          <div class="sort-option" data-sort="name-desc">שם ספר (ת&thinsp;→&thinsp;א)</div>
+          <div class="sort-divider"></div>
+          <div class="sort-option" data-sort="author-asc">שם סופר (א&thinsp;→&thinsp;ת)</div>
+          <div class="sort-option" data-sort="author-desc">שם סופר (ת&thinsp;→&thinsp;א)</div>
+          <div class="sort-divider"></div>
+          <div class="sort-option" data-sort="location">מיקום (ארון ← מדף ← שורה)</div>
+        </div>
+      </div>
+      <div class="stats-sep"></div>
+      <button class="btn-icon" id="filterToggleBtn" title="סינון לפי מיקום">🗂️ <span class="filter-label">סינון</span><span class="filter-badge" id="filterBadge"></span></button>
+      <div class="stats-sep"></div>
+      <button class="btn-icon active" id="viewGridBtn" title="תצוגת כרטיסים">⊞</button>
+      <button class="btn-icon" id="viewListBtn" title="תצוגת רשימה">☰</button>
+      <button class="btn-icon desktop-only" id="manageLocationsBtn" title="ניהול מיקומים">🗂️ ניהול מיקומים</button>
+    </div>
+  </div>
+
+  <!-- Sidebar Backdrop (mobile) -->
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+  <!-- Main Layout (tab: catalog) -->
+  <div class="main-layout" id="catalogView">
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <h3>סינון לפי מיקום</h3>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn-link" id="clearFilterBtn">נקה</button>
+          <button class="sidebar-close-btn" id="sidebarCloseBtn" aria-label="סגור">✕</button>
+        </div>
+      </div>
+      <div class="location-tree" id="locationTree"></div>
+      <div class="sidebar-footer-mobile">
+        <button class="btn-primary sidebar-done-btn" id="sidebarDoneBtn">סגור סינון</button>
+      </div>
+    </aside>
+
+    <!-- Content -->
+    <main class="content">
+      <div id="emptyState" class="empty-state hidden">
+        <div class="empty-icon">📖</div>
+        <h3>אין ספרים להצגה</h3>
+        <p>נסה לשנות את החיפוש או הסינון, או <button class="btn-link-inline" id="emptyAddBtn">הוסף ספר חדש</button></p>
+      </div>
+      <div id="booksContainer" class="books-grid"></div>
+    </main>
+
+  </div><!-- /catalogView -->
+
+  <!-- ===== MANAGEMENT VIEW (mobile tab 2) ===== -->
+  <div id="managementView" class="management-view">
+
+    <h2 class="mgmt-heading">ניהול קטלוג</h2>
+
+    <button class="mgmt-card" id="mgmtAddBook">
+      <span class="mgmt-card-icon">➕</span>
+      <div class="mgmt-card-body">
+        <div class="mgmt-card-title">הוסף ספר חדש</div>
+        <div class="mgmt-card-desc">הוסף ספר לקטלוג ידנית</div>
+      </div>
+      <span class="mgmt-card-arrow">›</span>
+    </button>
+
+    <button class="mgmt-card" id="mgmtImportExcel">
+      <span class="mgmt-card-icon">📥</span>
+      <div class="mgmt-card-body">
+        <div class="mgmt-card-title">ייבוא מ-Excel</div>
+        <div class="mgmt-card-desc">ייבא ספרים מקובץ Excel</div>
+      </div>
+      <span class="mgmt-card-arrow">›</span>
+    </button>
+
+    <button class="mgmt-card" id="mgmtLocations">
+      <span class="mgmt-card-icon">🗂️</span>
+      <div class="mgmt-card-body">
+        <div class="mgmt-card-title">ניהול מיקומים</div>
+        <div class="mgmt-card-desc">ארונות, מדפים ושורות</div>
+      </div>
+      <span class="mgmt-card-arrow">›</span>
+    </button>
+
+  </div>
+
+  <!-- ===== BOTTOM NAV (mobile only) ===== -->
+  <nav class="bottom-nav" id="bottomNav">
+    <button class="bottom-tab active" id="bottomTabCatalog" data-tab="catalog">
+      <span class="bottom-tab-icon">📚</span>
+      <span class="bottom-tab-label">קטלוג</span>
+    </button>
+    <button class="bottom-tab" id="bottomTabManage" data-tab="manage">
+      <span class="bottom-tab-icon">⚙️</span>
+      <span class="bottom-tab-label">ניהול</span>
+    </button>
+  </nav>
+
+  <!-- ===== ADD / EDIT BOOK MODAL ===== -->
+  <div class="modal-overlay" id="bookModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="bookModalTitle">הוסף ספר חדש</h2>
+        <button class="modal-close" id="bookModalClose">✕</button>
+      </div>
+
+      <!-- Tabs (hidden in edit mode) -->
+      <div class="modal-tabs" id="bookModalTabs">
+        <button class="modal-tab active" data-tab="manual">✍️ הוספה ידנית</button>
+        <button class="modal-tab" data-tab="excel">📥 ייבוא מ-Excel</button>
+      </div>
+
+      <div class="modal-body">
+
+        <!-- ── Manual Tab ── -->
+        <div id="tabManual" class="modal-tab-panel active">
+          <form id="bookForm" novalidate>
+            <input type="hidden" id="bookId">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="bookName">שם הספר <span class="required">*</span></label>
+                <input type="text" id="bookName" placeholder="הכנס שם ספר">
+                <span class="field-error" id="bookNameError"></span>
+              </div>
+              <div class="form-group">
+                <label for="bookAuthor">שם הסופר <span class="required">*</span></label>
+                <input type="text" id="bookAuthor" placeholder="הכנס שם סופר">
+                <span class="field-error" id="bookAuthorError"></span>
+              </div>
+            </div>
+
+            <div class="form-section-title">📍 מיקום בספרייה</div>
+
+            <div class="form-row location-row">
+              <div class="form-group">
+                <label for="cabinetSelect">ארון</label>
+                <select id="cabinetSelect"><option value="">-- בחר ארון --</option></select>
+                <div class="new-item-row" id="newCabinetRow">
+                  <input type="text" id="newCabinetName" placeholder="שם הארון החדש">
+                  <button type="button" class="btn-confirm" id="confirmNewCabinet" title="אשר">✓</button>
+                  <button type="button" class="btn-cancel-sm" id="cancelNewCabinet" title="בטל">✕</button>
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="shelfSelect">מדף</label>
+                <select id="shelfSelect" disabled><option value="">-- בחר מדף --</option></select>
+                <div class="new-item-row" id="newShelfRow">
+                  <input type="text" id="newShelfName" placeholder="שם המדף החדש">
+                  <button type="button" class="btn-confirm" id="confirmNewShelf" title="אשר">✓</button>
+                  <button type="button" class="btn-cancel-sm" id="cancelNewShelf" title="בטל">✕</button>
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="rowSelect">שורה</label>
+                <select id="rowSelect" disabled><option value="">-- בחר שורה --</option></select>
+                <div class="new-item-row" id="newRowRow">
+                  <input type="text" id="newRowName" placeholder="שם השורה החדשה">
+                  <button type="button" class="btn-confirm" id="confirmNewRow" title="אשר">✓</button>
+                  <button type="button" class="btn-cancel-sm" id="cancelNewRow" title="בטל">✕</button>
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <!-- ── Excel Tab ── -->
+        <div id="tabExcel" class="modal-tab-panel">
+
+          <!-- Drop zone -->
+          <div id="dropZone" class="drop-zone">
+            <div class="drop-zone-icon">📂</div>
+            <p class="drop-zone-text">גרור קובץ Excel לכאן</p>
+            <p class="drop-zone-or">— או —</p>
+            <button type="button" class="btn-primary" id="pickFileBtn">בחר קובץ</button>
+            <input type="file" id="excelFileInput" accept=".xlsx,.xls" style="display:none">
+            <p class="drop-zone-hint">תומך בקבצי .xlsx ו-.xls</p>
+            <button type="button" class="btn-link" id="downloadTemplateBtn">📄 הורד תבנית לדוגמה</button>
+          </div>
+
+          <!-- Preview (shown after file is loaded) -->
+          <div id="importResult" class="hidden">
+            <div id="importSummary"></div>
+            <div id="importErrorsBox" class="import-errors hidden"></div>
+            <div class="import-table-wrap">
+              <div id="importPreviewTable"></div>
+            </div>
+            <button type="button" class="btn-link" id="changeFileBtn" style="margin-top:10px">🔄 בחר קובץ אחר</button>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-secondary" id="bookModalCancel">ביטול</button>
+        <button class="btn-primary" id="bookModalSave">💾 שמור ספר</button>
+        <button class="btn-primary" id="importModalConfirm" style="display:none">📥 ייבא ספרים</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== DELETE CONFIRMATION MODAL ===== -->
+  <div class="modal-overlay" id="deleteModal">
+    <div class="modal modal-small">
+      <div class="modal-header">
+        <h2>🗑️ מחיקת ספר</h2>
+        <button class="modal-close" id="deleteModalClose">✕</button>
+      </div>
+      <div class="modal-body">
+        <p>האם אתה בטוח שברצונך למחוק את הספר</p>
+        <p class="delete-book-name" id="deleteBookName"></p>
+        <p class="text-muted">פעולה זו אינה ניתנת לביטול.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="deleteModalCancel">ביטול</button>
+        <button class="btn-danger" id="deleteModalConfirm">כן, מחק</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MANAGE LOCATIONS MODAL ===== -->
+  <div class="modal-overlay" id="locationsModal">
+    <div class="modal modal-wide">
+      <div class="modal-header">
+        <h2>🗂️ ניהול מיקומים</h2>
+        <button class="modal-close" id="locationsModalClose">✕</button>
+      </div>
+      <div class="modal-body">
+
+        <div class="loc-tabs">
+          <button class="loc-tab active" data-tab="cabinets">ארונות</button>
+          <button class="loc-tab" data-tab="shelves">מדפים</button>
+          <button class="loc-tab" data-tab="rows">שורות</button>
+        </div>
+
+        <!-- Cabinets -->
+        <div class="loc-panel active" id="panelCabinets">
+          <div class="loc-add-form">
+            <input type="text" id="newCabinetNameMgr" placeholder="שם הארון החדש">
+            <button class="btn-primary" id="addCabinetBtn">＋ הוסף</button>
+          </div>
+          <div class="loc-list" id="cabinetsList"></div>
+        </div>
+
+        <!-- Shelves -->
+        <div class="loc-panel" id="panelShelves">
+          <div class="loc-add-form">
+            <select id="newShelfCabinet">
+              <option value="">-- בחר ארון --</option>
+            </select>
+            <input type="text" id="newShelfNameMgr" placeholder="שם המדף החדש">
+            <button class="btn-primary" id="addShelfBtn">＋ הוסף</button>
+          </div>
+          <div class="loc-list" id="shelvesList"></div>
+        </div>
+
+        <!-- Rows -->
+        <div class="loc-panel" id="panelRows">
+          <div class="loc-add-form">
+            <select id="newRowShelf">
+              <option value="">-- בחר מדף --</option>
+            </select>
+            <input type="text" id="newRowNameMgr" placeholder="שם השורה החדשה">
+            <button class="btn-primary" id="addRowBtn">＋ הוסף</button>
+          </div>
+          <div class="loc-list" id="rowsList"></div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="locationsModalClose2">סגור</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sort backdrop (mobile) -->
+  <div class="sort-backdrop" id="sortBackdrop"></div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <!-- Loading Overlay -->
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-spinner"></div>
+    <p class="loading-text">טוען נתונים...</p>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
