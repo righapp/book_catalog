@@ -8,9 +8,12 @@ const state = {
   search: '',
   sort: 'name-asc',   // 'name-asc' | 'name-desc' | 'author-asc' | 'author-desc' | 'location'
   filter: { cabinetId: null, shelfId: null, rowId: null, layerId: null, owner: null },
+  seriesFilter: null,  // string | null
+  authorFilter: null,  // string | null
   mobileTab: 'catalog', // 'catalog' | 'manage'
   editingBookId: null,
   deletingBookId: null,
+  viewingBookId: null,
 };
 
 const SORT_LABELS = {
@@ -101,11 +104,14 @@ function getFilteredBooks() {
     if (state.filter.rowId     && book.rowId     !== state.filter.rowId)     return false;
     if (state.filter.shelfId   && book.shelfId   !== state.filter.shelfId)   return false;
     if (state.filter.cabinetId && book.cabinetId !== state.filter.cabinetId) return false;
+    if (state.seriesFilter && book.series.trim().toLowerCase() !== state.seriesFilter.trim().toLowerCase()) return false;
+    if (state.authorFilter && book.author.trim().toLowerCase() !== state.authorFilter.trim().toLowerCase()) return false;
     if (state.search) {
       const q = state.search.toLowerCase();
       const locationParts = getLocationLabel(book).join(' ').toLowerCase();
       if (!book.name.toLowerCase().includes(q) &&
           !book.author.toLowerCase().includes(q) &&
+          !(book.series || '').toLowerCase().includes(q) &&
           !locationParts.includes(q)) return false;
     }
     return true;
@@ -124,7 +130,31 @@ function countBooksFor(type, id) {
 function render() {
   renderStats();
   renderLocationTree();
+  renderSeriesChip();
+  renderAuthorChip();
   renderBooks();
+}
+
+function renderSeriesChip() {
+  const chip   = document.getElementById('seriesFilterChip');
+  const nameEl = document.getElementById('seriesFilterName');
+  if (state.seriesFilter) {
+    nameEl.textContent = state.seriesFilter;
+    chip.classList.remove('hidden');
+  } else {
+    chip.classList.add('hidden');
+  }
+}
+
+function renderAuthorChip() {
+  const chip   = document.getElementById('authorFilterChip');
+  const nameEl = document.getElementById('authorFilterName');
+  if (state.authorFilter) {
+    nameEl.textContent = state.authorFilter;
+    chip.classList.remove('hidden');
+  } else {
+    chip.classList.add('hidden');
+  }
 }
 
 // ---- Stats ----
@@ -137,7 +167,7 @@ function renderStats() {
 
   // Filter badge
   const hasFilter = state.filter.cabinetId || state.filter.shelfId || state.filter.rowId ||
-                    state.filter.layerId || state.filter.owner || state.search;
+                    state.filter.layerId || state.filter.owner || state.search || state.seriesFilter || state.authorFilter;
   const badge = document.getElementById('filterBadge');
   if (hasFilter) { badge.textContent = ''; badge.classList.add('visible'); }
   else           { badge.classList.remove('visible'); }
@@ -162,8 +192,9 @@ function switchMobileTab(tab) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-// ---- Sidebar (mobile) ----
+// ---- Sidebar ----
 function openSidebar() {
+  history.pushState({ modal: 'sidebar' }, '');
   document.getElementById('sidebar').classList.add('open');
   document.getElementById('sidebarBackdrop').classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -173,6 +204,7 @@ function closeSidebar() {
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebarBackdrop').classList.remove('open');
   document.body.style.overflow = '';
+  if (history.state?.modal === 'sidebar') { _historyBack = true; history.back(); }
 }
 
 // ---- Location Tree (Sidebar) ----
@@ -300,9 +332,9 @@ function renderDuplicateCard(books) {
   const copies = books.map((book, i) => {
     const loc    = getLocationLabel(book);
     const badges = loc.map(l => `<span class="location-badge">${esc(l)}</span>`).join('');
-    const shelf  = book.shelfId ? getShelf(book.shelfId) : null;
-    const imgBtn = shelf && shelf.image
-      ? `<button class="btn-shelf-img" data-action="view-shelf-img" data-shelf-id="${book.shelfId}" title="צפה בתמונת המדף">📷</button>`
+    const row    = book.rowId ? getRow(book.rowId) : null;
+    const imgBtn = row && row.image
+      ? `<button class="btn-shelf-img" data-action="view-row-img" data-row-id="${book.rowId}" title="צפה בתמונת הטור">📷</button>`
       : '';
     return `<div class="duplicate-copy">
       <span class="duplicate-copy-label">עותק ${i + 1}</span>
@@ -317,7 +349,7 @@ function renderDuplicateCard(books) {
     <div class="duplicate-badge">⚠️ ספר כפול (${books.length} עותקים)</div>
     <div class="book-card-top">
       <span class="book-card-title">${esc(books[0].name)}</span>
-      <span class="book-card-author">${esc(books[0].author)}</span>
+      <button class="btn-author-filter" data-action="filter-author" data-author="${esc(books[0].author)}">${esc(books[0].author)}</button>
     </div>
     ${copies}
   </div>`;
@@ -327,9 +359,9 @@ function renderDuplicateRow(books) {
   const copies = books.map((book, i) => {
     const loc    = getLocationLabel(book);
     const badges = loc.map(l => `<span class="location-badge">${esc(l)}</span>`).join('');
-    const shelf  = book.shelfId ? getShelf(book.shelfId) : null;
-    const imgBtn = shelf && shelf.image
-      ? `<button class="btn-shelf-img" data-action="view-shelf-img" data-shelf-id="${book.shelfId}" title="צפה בתמונת המדף">📷</button>`
+    const row    = book.rowId ? getRow(book.rowId) : null;
+    const imgBtn = row && row.image
+      ? `<button class="btn-shelf-img" data-action="view-row-img" data-row-id="${book.rowId}" title="צפה בתמונת הטור">📷</button>`
       : '';
     return `<div class="duplicate-copy">
       <span class="duplicate-copy-label">עותק ${i + 1}</span>
@@ -345,7 +377,7 @@ function renderDuplicateRow(books) {
       <div class="duplicate-badge" style="margin-bottom:4px">⚠️ ספר כפול (${books.length} עותקים)</div>
       <div class="book-card-top">
         <span class="book-card-title">${esc(books[0].name)}</span>
-        <span class="book-card-author">${esc(books[0].author)}</span>
+        <button class="btn-author-filter" data-action="filter-author" data-author="${esc(books[0].author)}">${esc(books[0].author)}</button>
       </div>
       ${copies}
     </div>
@@ -399,44 +431,97 @@ function renderBooks() {
 
 function renderBookCard(book) {
   const loc = getLocationLabel(book);
-  const badges = loc.map(l => `<span class="location-badge">${l}</span>`).join('');
-  const shelf  = book.shelfId ? getShelf(book.shelfId) : null;
-  const imgBtn = shelf && shelf.image
-    ? `<button class="btn-shelf-img" data-action="view-shelf-img" data-shelf-id="${book.shelfId}" title="צפה בתמונת המדף">📷</button>`
+  const badges = loc.map(l => `<span class="location-badge">${esc(l)}</span>`).join('');
+  const row    = book.rowId ? getRow(book.rowId) : null;
+  const imgBtn = row && row.image
+    ? `<button class="btn-shelf-img" data-action="view-row-img" data-row-id="${book.rowId}" title="צפה בתמונת הטור">📷</button>`
     : '';
-  return `<div class="book-card">
+  const seriesLabel = book.series ? (book.seriesNumber ? `${esc(book.series)} #${esc(book.seriesNumber)}` : esc(book.series)) : '';
+  const seriesHtml = seriesLabel
+    ? `<div class="book-card-series"><button class="btn-series-filter" data-action="filter-series" data-series="${esc(book.series)}">📚 ${seriesLabel}</button></div>`
+    : '';
+  const notesIcon = book.notes ? `<span title="יש הערות">💬</span>` : '';
+  return `<div class="book-card" data-action="open-detail" data-id="${book.id}">
     <div class="book-card-top">
       <span class="book-card-title">${esc(book.name)}</span>
-      <span class="book-card-author">${esc(book.author)}</span>
+      <button class="btn-author-filter" data-action="filter-author" data-author="${esc(book.author)}">${esc(book.author)}</button>
     </div>
-    <div class="book-card-location">${badges || '<span class="location-badge" style="opacity:.5">ללא מיקום</span>'}${imgBtn}</div>
-    <div class="book-card-actions">
-      <button class="btn-card-edit" data-action="edit" data-id="${book.id}">✏️ עריכה</button>
-      <button class="btn-card-delete" data-action="delete" data-id="${book.id}">🗑️ מחק</button>
-    </div>
+    ${seriesHtml}
+    <div class="book-card-location">${badges || '<span class="location-badge" style="opacity:.5">ללא מיקום</span>'}${imgBtn}${notesIcon}</div>
   </div>`;
 }
 
 function renderBookRow(book) {
   const loc = getLocationLabel(book);
-  const badges = loc.map(l => `<span class="location-badge">${l}</span>`).join('');
-  const shelf  = book.shelfId ? getShelf(book.shelfId) : null;
-  const imgBtn = shelf && shelf.image
-    ? `<button class="btn-shelf-img" data-action="view-shelf-img" data-shelf-id="${book.shelfId}" title="צפה בתמונת המדף">📷</button>`
+  const badges = loc.map(l => `<span class="location-badge">${esc(l)}</span>`).join('');
+  const row    = book.rowId ? getRow(book.rowId) : null;
+  const imgBtn = row && row.image
+    ? `<button class="btn-shelf-img" data-action="view-row-img" data-row-id="${book.rowId}" title="צפה בתמונת הטור">📷</button>`
     : '';
-  return `<div class="book-row">
+  const seriesLabel2 = book.series ? (book.seriesNumber ? `${esc(book.series)} #${esc(book.seriesNumber)}` : esc(book.series)) : '';
+  const seriesHtml = seriesLabel2
+    ? `<button class="btn-series-filter" data-action="filter-series" data-series="${esc(book.series)}" style="margin-bottom:2px">📚 ${seriesLabel2}</button>`
+    : '';
+  const notesIcon = book.notes ? `<span title="יש הערות">💬</span>` : '';
+  return `<div class="book-row" data-action="open-detail" data-id="${book.id}" style="cursor:pointer">
     <div class="book-row-main">
       <div class="book-card-top">
         <span class="book-card-title">${esc(book.name)}</span>
-        <span class="book-card-author">${esc(book.author)}</span>
+        <button class="btn-author-filter" data-action="filter-author" data-author="${esc(book.author)}">${esc(book.author)}</button>
       </div>
-      <div class="book-row-location">${badges || '<span class="location-badge" style="opacity:.5">ללא מיקום</span>'}${imgBtn}</div>
-    </div>
-    <div class="book-row-actions">
-      <button class="btn-card-edit" data-action="edit" data-id="${book.id}">✏️ עריכה</button>
-      <button class="btn-card-delete" data-action="delete" data-id="${book.id}">🗑️</button>
+      ${seriesHtml}
+      <div class="book-row-location">${badges || '<span class="location-badge" style="opacity:.5">ללא מיקום</span>'}${imgBtn}${notesIcon}</div>
     </div>
   </div>`;
+}
+
+function openBookDetailModal(id) {
+  const book = db.books.find(b => b.id === id);
+  if (!book) return;
+  state.viewingBookId = id;
+
+  const loc    = getLocationLabel(book);
+  const badges = loc.map(l => `<span class="location-badge">${esc(l)}</span>`).join('');
+
+  const row    = book.rowId ? getRow(book.rowId) : null;
+  const imgHtml = row && row.image
+    ? `<div class="book-detail-img">
+        <img src="${row.image}" alt="תמונת הטור" style="max-width:100%;border-radius:var(--r-md);border:1px solid var(--color-border)">
+        <div style="font-size:.75rem;color:var(--color-muted);margin-top:6px">📷 תמונת הטור</div>
+      </div>`
+    : '';
+
+  const seriesDetailLabel = book.series ? (book.seriesNumber ? `${esc(book.series)} #${esc(book.seriesNumber)}` : esc(book.series)) : '';
+  const seriesHtml = book.series
+    ? `<div class="book-detail-field">
+        <span class="book-detail-label">סדרה</span>
+        <div><button class="btn-series-filter" data-action="filter-series" data-series="${esc(book.series)}" style="font-size:.9rem">📚 ${seriesDetailLabel}</button></div>
+      </div>`
+    : '';
+
+  const notesHtml = book.notes
+    ? `<div class="book-detail-field">
+        <span class="book-detail-label">הערות</span>
+        <div class="book-detail-notes-text">${esc(book.notes).replace(/\n/g, '<br>')}</div>
+      </div>`
+    : '';
+
+  document.getElementById('bookDetailTitle').textContent = book.name;
+  document.getElementById('bookDetailBody').innerHTML = `
+    <div class="book-detail-field">
+      <span class="book-detail-label">סופר</span>
+      <div><button class="btn-author-filter" data-action="filter-author" data-author="${esc(book.author)}" style="font-size:.9rem">${esc(book.author)}</button></div>
+    </div>
+    ${seriesHtml}
+    <div class="book-detail-field">
+      <span class="book-detail-label">מיקום</span>
+      <div class="book-card-location" style="margin-top:2px">${badges || '<span class="location-badge" style="opacity:.5">ללא מיקום</span>'}</div>
+    </div>
+    ${notesHtml}
+    ${imgHtml}
+  `;
+
+  openModal('bookDetailModal');
 }
 
 function formatCascadeParts(parts) {
@@ -457,12 +542,16 @@ function esc(str) {
 // MODALS
 // ============================================================
 
+let _historyBack = false; // true when code calls history.back(), not user
+
 function openModal(id) {
+  history.pushState({ modal: id }, '');
   document.getElementById(id).classList.add('open');
 }
 
 function closeModal(id) {
   document.getElementById(id).classList.remove('open');
+  if (history.state?.modal) { _historyBack = true; history.back(); }
 }
 
 // ---- Book Modal ----
@@ -511,9 +600,12 @@ function openEditBookModal(id) {
   document.getElementById('bookModalTabs').style.display = 'none';
   resetBookForm();
 
-  document.getElementById('bookId').value     = book.id;
-  document.getElementById('bookName').value   = book.name;
-  document.getElementById('bookAuthor').value = book.author;
+  document.getElementById('bookId').value           = book.id;
+  document.getElementById('bookName').value         = book.name;
+  document.getElementById('bookAuthor').value       = book.author;
+  document.getElementById('bookSeries').value       = book.series || '';
+  document.getElementById('bookSeriesNumber').value = book.seriesNumber || '';
+  document.getElementById('bookNotes').value        = book.notes  || '';
 
   populateCabinetSelect(book.cabinetId);
   if (book.cabinetId) {
@@ -536,9 +628,12 @@ function openEditBookModal(id) {
 }
 
 function resetBookForm() {
-  document.getElementById('bookId').value     = '';
-  document.getElementById('bookName').value   = '';
-  document.getElementById('bookAuthor').value = '';
+  document.getElementById('bookId').value           = '';
+  document.getElementById('bookName').value         = '';
+  document.getElementById('bookAuthor').value       = '';
+  document.getElementById('bookSeries').value       = '';
+  document.getElementById('bookSeriesNumber').value = '';
+  document.getElementById('bookNotes').value        = '';
   document.getElementById('bookNameError').textContent   = '';
   document.getElementById('bookAuthorError').textContent = '';
 
@@ -653,6 +748,9 @@ async function saveBook() {
     shelfId:   shelfVal   && shelfVal   !== 'NEW' ? parseInt(shelfVal)   : null,
     rowId:     rowVal     && rowVal     !== 'NEW' ? parseInt(rowVal)     : null,
     layerId:   layerVal   && layerVal   !== 'NEW' ? parseInt(layerVal)   : null,
+    notes:        document.getElementById('bookNotes').value.trim(),
+    series:       document.getElementById('bookSeries').value.trim(),
+    seriesNumber: document.getElementById('bookSeriesNumber').value.trim(),
   };
 
   showLoadingOverlay(true);
@@ -701,6 +799,9 @@ async function saveBookAndContinue() {
     shelfId:   shelfVal   && shelfVal   !== 'NEW' ? parseInt(shelfVal)   : null,
     rowId:     rowVal     && rowVal     !== 'NEW' ? parseInt(rowVal)     : null,
     layerId:   layerVal   && layerVal   !== 'NEW' ? parseInt(layerVal)   : null,
+    notes:        document.getElementById('bookNotes').value.trim(),
+    series:       document.getElementById('bookSeries').value.trim(),
+    seriesNumber: document.getElementById('bookSeriesNumber').value.trim(),
   };
 
   showLoadingOverlay(true);
@@ -718,6 +819,7 @@ async function saveBookAndContinue() {
 
     document.getElementById('bookName').value   = '';
     document.getElementById('bookAuthor').value = '';
+    document.getElementById('bookNotes').value  = '';
     document.getElementById('bookNameError').textContent   = '';
     document.getElementById('bookAuthorError').textContent = '';
     hideNewRow('newCabinetRow');
@@ -807,15 +909,15 @@ function compressImage(file, maxPx, quality) {
   });
 }
 
-function openShelfImgMgmt(shelfId) {
-  const shelf = getShelf(shelfId);
-  if (!shelf) return;
-  shelfImgTargetId = shelfId;
-  document.getElementById('shelfImgMgmtName').textContent = shelf.name;
+function openShelfImgMgmt(rowId) {
+  const row = getRow(rowId);
+  if (!row) return;
+  shelfImgTargetId = rowId;
+  document.getElementById('shelfImgMgmtName').textContent = row.name;
   const currentWrap = document.getElementById('shelfImgCurrentWrap');
   const currentImg  = document.getElementById('shelfImgCurrent');
-  if (shelf.image) {
-    currentImg.src = shelf.image;
+  if (row.image) {
+    currentImg.src = row.image;
     currentWrap.style.display = '';
   } else {
     currentWrap.style.display = 'none';
@@ -827,8 +929,8 @@ async function saveShelfImage(base64) {
   showLoadingOverlay(true);
   try {
     await apiFetch('PUT', `/api/locations/${shelfImgTargetId}`, { image: base64 });
-    const shelf = getShelf(shelfImgTargetId);
-    if (shelf) shelf.image = base64;
+    const row = getRow(shelfImgTargetId);
+    if (row) row.image = base64;
     const currentWrap = document.getElementById('shelfImgCurrentWrap');
     const currentImg  = document.getElementById('shelfImgCurrent');
     if (base64) {
@@ -838,7 +940,7 @@ async function saveShelfImage(base64) {
       currentImg.src = '';
       currentWrap.style.display = 'none';
     }
-    renderShelvesList(parseInt(document.getElementById('newShelfCabinet').value) || null);
+    renderRowsList(parseInt(document.getElementById('newRowShelf').value) || null);
     render();
     showToast(base64 ? 'התמונה נשמרה ✓' : 'התמונה נמחקה ✓', 'success');
   } catch (e) {
@@ -848,11 +950,11 @@ async function saveShelfImage(base64) {
   }
 }
 
-function openShelfImgViewer(shelfId) {
-  const shelf = getShelf(shelfId);
-  if (!shelf || !shelf.image) return;
-  document.getElementById('shelfImgViewTitle').textContent = shelf.name;
-  document.getElementById('shelfImgViewImg').src = shelf.image;
+function openShelfImgViewer(rowId) {
+  const row = getRow(rowId);
+  if (!row || !row.image) return;
+  document.getElementById('shelfImgViewTitle').textContent = row.name;
+  document.getElementById('shelfImgViewImg').src = row.image;
   openModal('shelfImgViewModal');
 }
 
@@ -982,7 +1084,6 @@ function renderShelvesList(filterCabinetId) {
       <div class="loc-item-meta">${cab ? cab.name : ''} · ${booksCount} ספרים</div></div>
       <div style="display:flex;gap:6px;align-items:center">
         <button class="loc-item-rename" data-action="rename" data-id="${s.id}" data-type="shelf" title="שנה שם">✏️</button>
-        <button class="loc-item-img-btn${s.image ? ' has-image' : ''}" data-action="shelf-img" data-id="${s.id}" title="${s.image ? 'החלף תמונה' : 'הוסף תמונה'}">📷</button>
         <button class="loc-item-delete" data-action="del-shelf" data-id="${s.id}">מחק</button>
       </div>
       <div class="loc-name-edit-row" id="nameEditRow_${s.id}">
@@ -1017,6 +1118,7 @@ function renderRowsList(filterShelfId) {
       <div class="loc-item-meta">${cab ? cab.name + ' / ' : ''}${shelf ? shelf.name : ''} · ${booksCount} ספרים</div></div>
       <div style="display:flex;gap:6px;align-items:center">
         <button class="loc-item-rename" data-action="rename" data-id="${r.id}" data-type="row" title="שנה שם">✏️</button>
+        <button class="loc-item-img-btn${r.image ? ' has-image' : ''}" data-action="row-img" data-id="${r.id}" title="${r.image ? 'החלף תמונה' : 'הוסף תמונה'}">📷</button>
         <button class="loc-item-delete" data-action="del-row" data-id="${r.id}">מחק</button>
       </div>
       <div class="loc-name-edit-row" id="nameEditRow_${r.id}">
@@ -1314,6 +1416,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Clear filter
   document.getElementById('clearFilterBtn').addEventListener('click', () => {
     state.filter = { cabinetId: null, shelfId: null, rowId: null, layerId: null, owner: null };
+    state.seriesFilter = null;
+    state.authorFilter = null;
     render();
   });
 
@@ -1374,9 +1478,60 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('booksContainer').addEventListener('click', e => {
     const el = e.target.closest('[data-action]');
     if (!el) return;
-    if (el.dataset.action === 'edit')           openEditBookModal(parseInt(el.dataset.id));
-    if (el.dataset.action === 'delete')         openDeleteModal(parseInt(el.dataset.id));
-    if (el.dataset.action === 'view-shelf-img') openShelfImgViewer(parseInt(el.dataset.shelfId));
+    if (el.dataset.action === 'open-detail')   openBookDetailModal(parseInt(el.dataset.id));
+    if (el.dataset.action === 'edit')          openEditBookModal(parseInt(el.dataset.id));
+    if (el.dataset.action === 'delete')        openDeleteModal(parseInt(el.dataset.id));
+    if (el.dataset.action === 'view-row-img')  openShelfImgViewer(parseInt(el.dataset.rowId));
+    if (el.dataset.action === 'filter-series') {
+      const series = el.dataset.series;
+      state.seriesFilter = state.seriesFilter === series ? null : series;
+      render();
+    }
+    if (el.dataset.action === 'filter-author') {
+      const author = el.dataset.author;
+      state.authorFilter = state.authorFilter === author ? null : author;
+      render();
+    }
+  });
+
+  // ---- Book Detail Modal ----
+  document.getElementById('bookDetailClose').addEventListener('click',  () => closeModal('bookDetailModal'));
+  document.getElementById('bookDetailClose2').addEventListener('click', () => closeModal('bookDetailModal'));
+  document.getElementById('bookDetailEdit').addEventListener('click', () => {
+    const id = state.viewingBookId;
+    closeModal('bookDetailModal');
+    openEditBookModal(id);
+  });
+  document.getElementById('bookDetailDelete').addEventListener('click', () => {
+    const id = state.viewingBookId;
+    closeModal('bookDetailModal');
+    openDeleteModal(id);
+  });
+  document.getElementById('bookDetailBody').addEventListener('click', e => {
+    const el = e.target.closest('[data-action]');
+    if (!el) return;
+    if (el.dataset.action === 'filter-series') {
+      closeModal('bookDetailModal');
+      state.seriesFilter = el.dataset.series;
+      render();
+    }
+    if (el.dataset.action === 'filter-author') {
+      closeModal('bookDetailModal');
+      state.authorFilter = el.dataset.author;
+      render();
+    }
+  });
+
+  // ---- Series filter chip ----
+  document.getElementById('clearSeriesFilter').addEventListener('click', () => {
+    state.seriesFilter = null;
+    render();
+  });
+
+  // ---- Author filter chip ----
+  document.getElementById('clearAuthorFilter').addEventListener('click', () => {
+    state.authorFilter = null;
+    render();
   });
 
   // ---- Book Modal ----
@@ -1847,7 +2002,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!btn) return;
       const id = parseInt(btn.dataset.id);
 
-      if (btn.dataset.action === 'shelf-img') {
+      if (btn.dataset.action === 'row-img') {
         openShelfImgMgmt(id);
         return;
       }
@@ -1986,7 +2141,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('shelfImgViewClose2').addEventListener('click', () => closeModal('shelfImgViewModal'));
 
   // Close modal on overlay click
-  ['bookModal', 'deleteModal', 'locationsModal', 'shelfImgMgmtModal', 'shelfImgViewModal'].forEach(id => {
+  ['bookModal', 'deleteModal', 'locationsModal', 'bookDetailModal', 'shelfImgMgmtModal', 'shelfImgViewModal'].forEach(id => {
     document.getElementById(id).addEventListener('click', e => {
       if (e.target === document.getElementById(id)) closeModal(id);
     });
@@ -2125,6 +2280,19 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('changeFileBtn').addEventListener('click', resetExcelTab);
 
   document.getElementById('importModalConfirm').addEventListener('click', confirmImport);
+
+  // ---- Back button: close open modal/sidebar instead of leaving app ----
+  const ALL_MODALS = ['bookModal', 'deleteModal', 'locationsModal', 'bookDetailModal', 'shelfImgMgmtModal', 'shelfImgViewModal'];
+  window.addEventListener('popstate', () => {
+    if (_historyBack) { _historyBack = false; return; }
+    const openId = ALL_MODALS.find(id => document.getElementById(id).classList.contains('open'));
+    if (openId) { document.getElementById(openId).classList.remove('open'); return; }
+    if (document.getElementById('sidebar').classList.contains('open')) {
+      document.getElementById('sidebar').classList.remove('open');
+      document.getElementById('sidebarBackdrop').classList.remove('open');
+      document.body.style.overflow = '';
+    }
+  });
 
   // ---- Initial load ----
   initApp();

@@ -110,7 +110,10 @@ function parseBooks(rows) {
       cabinetId: parseInt(r[3]) || null,
       shelfId:   parseInt(r[4]) || null,
       rowId:     parseInt(r[5]) || null,
-      layerId:   parseInt(r[6]) || null,
+      layerId:      parseInt(r[6]) || null,
+      notes:        r[7] || '',
+      series:       r[8] || '',
+      seriesNumber: r[9] || '',
     }))
     .filter(b => b.id && b.name);
 }
@@ -124,8 +127,8 @@ function parseLocations(rows) {
     const image = r[5] ? String(r[5]).trim() : '';
     if (!id || !name) return;
     if (type === 'ארון')  out.cabinets.push({ id, name, owner: extra });
-    if (type === 'מדף')   out.shelves.push({ id, cabinetId: pid, name, image });
-    if (type === 'טור')   out.rows.push({ id, shelfId: pid, name });
+    if (type === 'מדף')   out.shelves.push({ id, cabinetId: pid, name });
+    if (type === 'טור')   out.rows.push({ id, shelfId: pid, name, image });
     if (type === 'שכבה')  out.layers.push({ id, rowId: pid, name });
   });
   return out;
@@ -158,7 +161,7 @@ async function ensureSheets() {
   // Add headers if sheets are empty
   const booksRows = await sheetGet(BOOKS_SHEET);
   if (!booksRows.length) {
-    await sheetAppend(BOOKS_SHEET, [['id', 'שם ספר', 'שם סופר', 'ארון_id', 'מדף_id', 'טור_id', 'שכבה_id']]);
+    await sheetAppend(BOOKS_SHEET, [['id', 'שם ספר', 'שם סופר', 'ארון_id', 'מדף_id', 'טור_id', 'שכבה_id', 'הערות', 'סדרה', 'מספר_בסדרה']]);
   }
   const locRows = await sheetGet(LOC_SHEET);
   if (!locRows.length) {
@@ -181,11 +184,11 @@ app.get('/api/data', async (req, res) => {
 // POST /api/books  – add one book
 app.post('/api/books', async (req, res) => {
   try {
-    const { name, author, cabinetId, shelfId, rowId, layerId } = req.body;
+    const { name, author, cabinetId, shelfId, rowId, layerId, notes, series, seriesNumber } = req.body;
     const rows   = await sheetGet(BOOKS_SHEET);
     const nextId = maxId(parseBooks(rows)) + 1;
-    await sheetAppend(BOOKS_SHEET, [[nextId, name, author, cabinetId ?? '', shelfId ?? '', rowId ?? '', layerId ?? '']]);
-    res.json({ id: nextId, name, author, cabinetId, shelfId, rowId, layerId });
+    await sheetAppend(BOOKS_SHEET, [[nextId, name, author, cabinetId ?? '', shelfId ?? '', rowId ?? '', layerId ?? '', notes ?? '', series ?? '', seriesNumber ?? '']]);
+    res.json({ id: nextId, name, author, cabinetId, shelfId, rowId, layerId, notes: notes ?? '', series: series ?? '', seriesNumber: seriesNumber ?? '' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -196,8 +199,8 @@ app.put('/api/books/:id', async (req, res) => {
     const rows     = await sheetGet(BOOKS_SHEET);
     const idx      = rows.findIndex((r, i) => i > 0 && parseInt(r[0]) === targetId);
     if (idx === -1) return res.status(404).json({ error: 'לא נמצא' });
-    const { name, author, cabinetId, shelfId, rowId, layerId } = req.body;
-    await sheetUpdate(BOOKS_SHEET, idx + 1, [targetId, name, author, cabinetId ?? '', shelfId ?? '', rowId ?? '', layerId ?? '']);
+    const { name, author, cabinetId, shelfId, rowId, layerId, notes, series, seriesNumber } = req.body;
+    await sheetUpdate(BOOKS_SHEET, idx + 1, [targetId, name, author, cabinetId ?? '', shelfId ?? '', rowId ?? '', layerId ?? '', notes ?? '', series ?? '', seriesNumber ?? '']);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -298,13 +301,15 @@ app.post('/api/locations', async (req, res) => {
 app.put('/api/locations/:id', async (req, res) => {
   try {
     const targetId = parseInt(req.params.id);
-    const { owner, image } = req.body;
+    const { owner, image, name } = req.body;
     const rows = await sheetGet(LOC_SHEET);
     const idx  = rows.findIndex((r, i) => i > 0 && parseInt(r[1]) === targetId);
     if (idx === -1) return res.status(404).json({ error: 'לא נמצא' });
     const row = rows[idx];
     await sheetUpdate(LOC_SHEET, idx + 1, [
-      row[0], row[1], row[2], row[3] ?? '',
+      row[0], row[1],
+      name  !== undefined ? name  : row[2],
+      row[3] ?? '',
       owner !== undefined ? owner : (row[4] ?? ''),
       image !== undefined ? image : (row[5] ?? ''),
     ]);

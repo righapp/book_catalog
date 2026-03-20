@@ -65,29 +65,37 @@
     </div>
   </div>
 
-  <!-- Sidebar Backdrop (mobile) -->
+  <!-- Sidebar Backdrop -->
   <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+  <!-- Sidebar (outside main-layout so z-index works correctly on desktop) -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h3>סינון</h3>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn-link" id="clearFilterBtn">נקה</button>
+        <button class="sidebar-close-btn" id="sidebarCloseBtn" aria-label="סגור">✕</button>
+      </div>
+    </div>
+    <div class="location-tree" id="locationTree"></div>
+    <div class="sidebar-footer-mobile">
+      <button class="btn-primary sidebar-done-btn" id="sidebarDoneBtn">סגור סינון</button>
+    </div>
+  </aside>
 
   <!-- Main Layout (tab: catalog) -->
   <div class="main-layout" id="catalogView">
 
-    <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar">
-      <div class="sidebar-header">
-        <h3>סינון</h3>
-        <div style="display:flex;gap:8px;align-items:center">
-          <button class="btn-link" id="clearFilterBtn">נקה</button>
-          <button class="sidebar-close-btn" id="sidebarCloseBtn" aria-label="סגור">✕</button>
-        </div>
-      </div>
-      <div class="location-tree" id="locationTree"></div>
-      <div class="sidebar-footer-mobile">
-        <button class="btn-primary sidebar-done-btn" id="sidebarDoneBtn">סגור סינון</button>
-      </div>
-    </aside>
-
     <!-- Content -->
     <main class="content">
+      <div id="seriesFilterChip" class="series-filter-chip hidden">
+        📚 סדרה: <span id="seriesFilterName"></span>
+        <button id="clearSeriesFilter" title="נקה סינון סדרה">✕</button>
+      </div>
+      <div id="authorFilterChip" class="series-filter-chip hidden" style="background:var(--bg-hover);border-color:var(--color-border)">
+        ✍️ סופר: <span id="authorFilterName"></span>
+        <button id="clearAuthorFilter" title="נקה סינון סופר">✕</button>
+      </div>
       <div id="emptyState" class="empty-state hidden">
         <div class="empty-icon">📖</div>
         <h3>אין ספרים להצגה</h3>
@@ -184,6 +192,14 @@
                 <input type="text" id="bookAuthor" placeholder="הכנס שם סופר">
                 <span class="field-error" id="bookAuthorError"></span>
               </div>
+              <div class="form-group">
+                <label for="bookSeries">סדרה</label>
+                <input type="text" id="bookSeries" placeholder="שם הסדרה (אופציונלי)">
+              </div>
+              <div class="form-group form-group-narrow">
+                <label for="bookSeriesNumber"># בסדרה</label>
+                <input type="number" id="bookSeriesNumber" placeholder="מס'" min="1">
+              </div>
             </div>
 
             <div class="form-section-title">📍 מיקום בספרייה</div>
@@ -226,6 +242,12 @@
                 </div>
               </div>
             </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="bookNotes">הערות</label>
+                <textarea id="bookNotes" placeholder="הערות על הספר (אופציונלי)" rows="3" style="resize:vertical;font-size:1rem;padding:12px 14px;border:1.5px solid var(--color-border);border-radius:var(--r-sm);width:100%;outline:none;font-family:inherit;transition:var(--t);-webkit-appearance:none;"></textarea>
+              </div>
+            </div>
           </form>
         </div>
 
@@ -256,7 +278,7 @@
         </div>
       </div>
 
-      <div class="modal-footer">
+      <div class="modal-footer modal-footer-wrap">
         <button class="btn-secondary" id="bookModalCancel">ביטול</button>
         <button class="btn-primary" id="bookModalSave">💾 שמור ספר</button>
         <button class="btn-primary" id="bookModalSaveAndAdd" style="display:none">💾 שמור והוסף עוד</button>
@@ -362,11 +384,27 @@
     </div>
   </div>
 
-  <!-- ===== SHELF IMAGE MANAGEMENT MODAL ===== -->
+  <!-- ===== BOOK DETAIL MODAL ===== -->
+  <div class="modal-overlay" id="bookDetailModal">
+    <div class="modal modal-small">
+      <div class="modal-header">
+        <h2 id="bookDetailTitle" style="font-size:1.05rem;line-height:1.3"></h2>
+        <button class="modal-close" id="bookDetailClose">✕</button>
+      </div>
+      <div class="modal-body" id="bookDetailBody"></div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="bookDetailClose2">סגור</button>
+        <button class="btn-primary" id="bookDetailEdit">✏️ עריכה</button>
+        <button class="btn-danger" id="bookDetailDelete">🗑️ מחק</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== ROW IMAGE MANAGEMENT MODAL ===== -->
   <div class="modal-overlay" id="shelfImgMgmtModal">
     <div class="modal modal-small">
       <div class="modal-header">
-        <h2>📷 תמונת מדף: <span id="shelfImgMgmtName" style="font-weight:normal"></span></h2>
+        <h2>📷 תמונת טור: <span id="shelfImgMgmtName" style="font-weight:normal"></span></h2>
         <button class="modal-close" id="shelfImgMgmtClose">✕</button>
       </div>
       <div class="modal-body">
@@ -379,7 +417,7 @@
         <div style="text-align:center">
           <button class="btn-primary" id="shelfImgPickBtn">📷 בחר / החלף תמונה</button>
           <input type="file" id="shelfImgFileInput" accept="image/*" style="display:none">
-          <p style="font-size:.78rem;color:var(--color-muted);margin-top:10px">התמונה נשמרת ב-Google Sheets<br>מומלץ: תמונת סקירה קטנה של המדף</p>
+          <p style="font-size:.78rem;color:var(--color-muted);margin-top:10px">התמונה נשמרת ב-Google Sheets<br>מומלץ: תמונת סקירה קטנה של הטור</p>
         </div>
       </div>
       <div class="modal-footer">
@@ -388,7 +426,7 @@
     </div>
   </div>
 
-  <!-- ===== SHELF IMAGE VIEWER MODAL ===== -->
+  <!-- ===== ROW IMAGE VIEWER MODAL ===== -->
   <div class="modal-overlay" id="shelfImgViewModal">
     <div class="modal modal-small">
       <div class="modal-header">

@@ -677,12 +677,112 @@ button, select, input[type="text"] { touch-action: manipulation; }
   border:1px solid var(--color-border); white-space:nowrap;
 }
 
-/* Actions always visible on mobile */
+/* Compact card: entire card is clickable */
+.book-card { cursor: pointer; }
+
+/* Series link in book cards */
+.book-card-series {
+  font-size: .78rem;
+  color: var(--color-accent);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.btn-series-filter {
+  background: none;
+  border: none;
+  color: var(--color-accent);
+  font-size: .78rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline dotted;
+}
+.btn-series-filter:hover { color: var(--color-primary); }
+
+.btn-author-filter {
+  background: none;
+  border: none;
+  color: var(--color-muted);
+  font-size: .87rem;
+  cursor: pointer;
+  padding: 0;
+  text-align: right;
+  white-space: nowrap;
+}
+.btn-author-filter:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+/* Notes / image icons inline */
+.book-card-icons {
+  display: flex;
+  gap: 4px;
+  font-size: .85rem;
+}
+
+/* Book detail modal body */
+.book-detail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+.book-detail-label {
+  font-size: .78rem;
+  font-weight: 700;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+.book-detail-notes-text {
+  font-size: .9rem;
+  color: var(--color-text);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  background: var(--bg-hover);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-lt);
+}
+.book-detail-img { margin-top: 4px; text-align: center; }
+
+/* Series filter chip */
+.series-filter-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--color-accent-lt);
+  border: 1.5px solid var(--color-accent);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: .85rem;
+  color: var(--color-primary-dk);
+  font-weight: 600;
+  margin-bottom: 12px;
+  width: fit-content;
+}
+.series-filter-chip button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-primary-dk);
+  font-size: 1rem;
+  padding: 0 2px;
+  line-height: 1;
+  border-radius: 50%;
+  min-height: auto;
+}
+.series-filter-chip button:hover { background: rgba(0,0,0,.1); }
+
+/* Card actions (used in detail modal / duplicate cards) */
 .book-card-actions {
   display: flex;
   gap: 8px;
   margin-top: 4px;
-  opacity: 1;  /* always visible */
+  opacity: 1;
 }
 
 .btn-card-edit, .btn-card-delete {
@@ -788,6 +888,7 @@ button, select, input[type="text"] { touch-action: manipulation; }
   gap: 10px;
   flex-shrink: 0;
   background: var(--bg-surface);
+  flex-wrap: wrap;
 }
 
 /* ============================================================
@@ -831,6 +932,7 @@ button, select, input[type="text"] { touch-action: manipulation; }
 .form-group label { font-size:.88rem; font-weight:600; color:var(--color-text-lt); }
 
 .form-group input[type="text"],
+.form-group input[type="number"],
 .form-group select {
   padding: 13px 14px;
   border: 1.5px solid var(--color-border);
@@ -845,11 +947,15 @@ button, select, input[type="text"] { touch-action: manipulation; }
   min-height: 48px;
 }
 .form-group input[type="text"]:focus,
+.form-group input[type="number"]:focus,
 .form-group select:focus {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px rgba(107,63,38,.1);
 }
 .form-group select:disabled { background:var(--bg-hover); color:var(--color-muted); }
+.form-group input[type="number"]::-webkit-inner-spin-button,
+.form-group input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.form-group input[type="number"] { -moz-appearance: textfield; }
 
 .form-section-title {
   font-size:.88rem; font-weight:700; color:var(--color-primary);
@@ -1185,6 +1291,9 @@ button, select, input[type="text"] { touch-action: manipulation; }
   .stats-left  { display:flex; align-items:center; gap:16px; }
   .mobile-count { display:none; }
 
+  /* Allow sort dropdown to overflow the stats bar */
+  .stats-right { overflow: visible; }
+
   /* Sort dropdown: positioned below button, not fullscreen */
   .sort-dropdown {
     position: absolute;
@@ -1218,11 +1327,9 @@ button, select, input[type="text"] { touch-action: manipulation; }
     gap: 16px;
   }
 
-  /* Book card: actions only on hover */
+  /* Book card: hover highlight */
   .book-card { padding:18px; gap:10px; }
-  .book-card-actions { opacity:0; }
   .book-card:hover { box-shadow:var(--shadow-md); transform:translateY(-2px); border-color:var(--color-border); }
-  .book-card:hover .book-card-actions { opacity:1; }
   .btn-card-edit, .btn-card-delete { flex:none; padding:5px 12px; min-height:34px; }
 
   /* Modal: centered */
@@ -1239,8 +1346,11 @@ button, select, input[type="text"] { touch-action: manipulation; }
 
   /* Form: side by side */
   .form-row { flex-direction:row; }
+  .form-row > .form-group { flex: 1; min-width: 0; }
+  .form-row > .form-group-narrow { flex: 0 0 90px; }
   .location-row { flex-direction:row; }
   .form-group input[type="text"],
+  .form-group input[type="number"],
   .form-group select { padding:9px 12px; min-height:auto; font-size:.9rem; }
   .new-item-row input { padding:7px 10px; min-height:auto; }
   .loc-add-form input, .loc-add-form select { padding:8px 12px; min-height:auto; font-size:.88rem; }
