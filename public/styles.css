@@ -48,12 +48,16 @@ body {
 .hidden   { display: none !important; }
 .desktop-only { display: none; }
 
-/* Hide nav-management buttons in catalog tab (mobile only) */
+/* Mobile: hide nav/bar buttons in catalog tab */
 @media (max-width: 767px) {
   #addBookBtn,
   #manageLocationsBtn { display: none; }
 
-  body.tab-manage #addBookBtn { display: flex; }
+  /* Manage tab: hide search + add button + stats bar entirely */
+  body.tab-manage .nav-search,
+  body.tab-manage #addBookBtn { display: none !important; }
+  body.tab-manage .stats-bar  { display: none !important; }
+  body.tab-manage .management-view { margin-top: var(--nav-h); }
 }
 
 /* ============================================================
@@ -62,7 +66,7 @@ body {
 .navbar {
   position: fixed;
   top: 0; right: 0; left: 0;
-  z-index: 100;
+  z-index: 265;
   height: var(--nav-h);
   background: var(--color-primary);
   display: flex;
@@ -157,7 +161,7 @@ body {
   position: fixed;
   top: var(--nav-h);
   right: 0; left: 0;
-  z-index: 90;
+  z-index: 260;
   height: var(--bar-h);
   background: var(--bg-surface);
   border-bottom: 1px solid var(--color-border);
@@ -413,7 +417,7 @@ button, select, input[type="text"] { touch-action: manipulation; }
   position: fixed;
   inset: 0;
   background: rgba(30,15,5,.5);
-  z-index: 199;
+  z-index: 270;
   backdrop-filter: blur(2px);
 }
 .sidebar-backdrop.open { display: block; }
@@ -435,7 +439,7 @@ button, select, input[type="text"] { touch-action: manipulation; }
   top: 0; bottom: 0;
   right: 0;
   width: min(var(--sidebar-w), 85vw);
-  z-index: 200;
+  z-index: 280;
   background: var(--bg-surface);
   border-left: 1px solid var(--color-border);
   display: flex;
@@ -498,6 +502,23 @@ button, select, input[type="text"] { touch-action: manipulation; }
 .sidebar-done-btn {
   width: 100%;
   justify-content: center;
+}
+
+/* Section title inside location tree */
+.tree-section-title {
+  font-size: .72rem;
+  font-weight: 700;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  padding: 10px 10px 4px;
+  border-top: 1px solid var(--color-border-lt);
+  margin-top: 4px;
+}
+.tree-section-title:first-child {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 2px;
 }
 
 /* Location tree items */
@@ -1155,20 +1176,14 @@ button, select, input[type="text"] { touch-action: manipulation; }
   .sort-dropdown-handle { display:none; }
   .sort-option { padding:9px 16px; min-height:auto; font-size:.88rem; }
 
-  /* Sidebar: static, always visible */
-  .sidebar-backdrop { display:none !important; }
-  .sidebar-close-btn { display:none; }
-  .sidebar-footer-mobile { display:none; }
+  /* Sidebar: overlay panel, opened by filter button */
+  .sidebar-backdrop { /* allow showing on desktop */ }
+  .sidebar-close-btn { display: flex; }
+  .sidebar-footer-mobile { display: none; }
 
   .sidebar {
-    position: sticky;
-    top: calc(var(--nav-h) + var(--bar-h));
-    height: calc(100vh - var(--nav-h) - var(--bar-h));
-    width: var(--sidebar-w);
-    transform: none !important;
-    box-shadow: none;
-    flex-shrink: 0;
-    border-radius: 0;
+    /* keeps position:fixed from mobile — just wider */
+    width: 300px;
   }
 
   /* Main layout */
@@ -1209,3 +1224,197 @@ button, select, input[type="text"] { touch-action: manipulation; }
   .new-item-row input { padding:7px 10px; min-height:auto; }
   .loc-add-form input, .loc-add-form select { padding:8px 12px; min-height:auto; font-size:.88rem; }
 }
+
+/* ============================================================
+   DUPLICATE BOOKS
+   ============================================================ */
+.book-card.duplicate-card {
+  border-color: var(--color-danger);
+  border-width: 2px;
+}
+
+.duplicate-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  border: 1px solid #EF9A9A;
+  font-size: .78rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 10px;
+  margin-bottom: 2px;
+  width: fit-content;
+}
+
+.duplicate-copy {
+  border-top: 1px dashed var(--color-border);
+  padding-top: 8px;
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.duplicate-copy-label {
+  font-size: .75rem;
+  color: var(--color-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .3px;
+}
+
+/* In list view */
+.book-row.duplicate-row {
+  border-color: var(--color-danger);
+  border-width: 2px;
+}
+
+/* ============================================================
+   MULTI-ADD MODE
+   ============================================================ */
+.multi-add-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+/* ============================================================
+   LOCATION MANAGER - CABINET CARD (with owner)
+   ============================================================ */
+.loc-item-cab {
+  background: var(--bg-main);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--color-border-lt);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.loc-item-cab-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.loc-item-cab-info { flex: 1; min-width: 0; }
+
+.loc-item-cab-btns {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.loc-item-owner {
+  font-size: .78rem;
+  color: var(--color-accent);
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.loc-owner-edit-row {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.loc-owner-edit-row.visible { display: flex; }
+.loc-owner-edit-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1.5px solid var(--color-accent);
+  border-radius: var(--r-sm);
+  font-size: 1rem;
+  outline: none;
+  min-height: 44px;
+  background: var(--bg-surface);
+  color: var(--color-text);
+  -webkit-appearance: none;
+}
+.loc-owner-edit-row input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(107,63,38,.1);
+}
+
+.loc-item-edit-owner {
+  background: none;
+  border: 1px solid var(--color-border);
+  color: var(--color-muted);
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  font-size: .8rem;
+  cursor: pointer;
+  min-height: 34px;
+  transition: var(--t);
+  white-space: nowrap;
+}
+.loc-item-edit-owner:hover { border-color: var(--color-accent); color: var(--color-accent); }
+
+/* ============================================================
+   OWNER FILTER (sidebar)
+   ============================================================ */
+.owner-filter-option {
+  padding: 9px 10px;
+  font-size: .88rem;
+  color: var(--color-text-lt);
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  border: 1.5px solid transparent;
+  transition: var(--t);
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.owner-filter-option:active { background: var(--bg-hover); }
+.owner-filter-option.active {
+  background: var(--color-accent-lt);
+  color: var(--color-primary-dk);
+  border-color: var(--color-accent);
+  font-weight: 600;
+}
+
+/* ============================================================
+   SHELF IMAGE BUTTONS
+   ============================================================ */
+.loc-item-img-btn {
+  background: none;
+  border: 1px solid var(--color-border);
+  color: var(--color-muted);
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  font-size: .85rem;
+  cursor: pointer;
+  min-height: 34px;
+  transition: var(--t);
+  white-space: nowrap;
+}
+.loc-item-img-btn:hover { border-color: var(--color-accent); color: var(--color-accent); }
+.loc-item-img-btn.has-image {
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+.loc-item-img-btn.has-image:hover { background: #E8F5E9; }
+
+.btn-shelf-img {
+  background: none;
+  border: none;
+  font-size: .9rem;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  vertical-align: middle;
+  opacity: .75;
+  transition: opacity var(--t), transform var(--t);
+  flex-shrink: 0;
+}
+.btn-shelf-img:hover  { opacity: 1; transform: scale(1.15); }
+.btn-shelf-img:active { transform: scale(.9); }

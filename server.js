@@ -119,9 +119,11 @@ function parseLocations(rows) {
   if (rows.length <= 1) return out;
   rows.slice(1).forEach(r => {
     const type = r[0], id = parseInt(r[1]), name = r[2], pid = parseInt(r[3]) || null;
+    const extra = r[4] ? String(r[4]).trim() : '';
+    const image = r[5] ? String(r[5]).trim() : '';
     if (!id || !name) return;
-    if (type === 'ארון')  out.cabinets.push({ id, name });
-    if (type === 'מדף')   out.shelves.push({ id, cabinetId: pid, name });
+    if (type === 'ארון')  out.cabinets.push({ id, name, owner: extra });
+    if (type === 'מדף')   out.shelves.push({ id, cabinetId: pid, name, image });
     if (type === 'שורה')  out.rows.push({ id, shelfId: pid, name });
   });
   return out;
@@ -268,12 +270,31 @@ app.post('/api/books/bulk', async (req, res) => {
 // POST /api/locations  – add one location (cabinet / shelf / row)
 app.post('/api/locations', async (req, res) => {
   try {
-    const { type, name, parentId } = req.body; // type: 'ארון'|'מדף'|'שורה'
+    const { type, name, parentId, owner } = req.body; // type: 'ארון'|'מדף'|'שורה'
     const rows   = await sheetGet(LOC_SHEET);
     const locs   = parseLocations(rows);
     const nextId = maxId([...locs.cabinets, ...locs.shelves, ...locs.rows]) + 1;
-    await sheetAppend(LOC_SHEET, [[type, nextId, name, parentId ?? '']]);
-    res.json({ id: nextId, name, parentId });
+    const extra  = (type === 'ארון' && owner) ? owner : '';
+    await sheetAppend(LOC_SHEET, [[type, nextId, name, parentId ?? '', extra]]);
+    res.json({ id: nextId, name, parentId, owner: extra });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT /api/locations/:id  – update cabinet owner or shelf image
+app.put('/api/locations/:id', async (req, res) => {
+  try {
+    const targetId = parseInt(req.params.id);
+    const { owner, image } = req.body;
+    const rows = await sheetGet(LOC_SHEET);
+    const idx  = rows.findIndex((r, i) => i > 0 && parseInt(r[1]) === targetId);
+    if (idx === -1) return res.status(404).json({ error: 'לא נמצא' });
+    const row = rows[idx];
+    await sheetUpdate(LOC_SHEET, idx + 1, [
+      row[0], row[1], row[2], row[3] ?? '',
+      owner !== undefined ? owner : (row[4] ?? ''),
+      image !== undefined ? image : (row[5] ?? ''),
+    ]);
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

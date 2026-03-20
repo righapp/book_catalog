@@ -74,7 +74,7 @@
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
-        <h3>סינון לפי מיקום</h3>
+        <h3>סינון</h3>
         <div style="display:flex;gap:8px;align-items:center">
           <button class="btn-link" id="clearFilterBtn">נקה</button>
           <button class="sidebar-close-btn" id="sidebarCloseBtn" aria-label="סגור">✕</button>
@@ -108,6 +108,15 @@
       <div class="mgmt-card-body">
         <div class="mgmt-card-title">הוסף ספר חדש</div>
         <div class="mgmt-card-desc">הוסף ספר לקטלוג ידנית</div>
+      </div>
+      <span class="mgmt-card-arrow">›</span>
+    </button>
+
+    <button class="mgmt-card" id="mgmtAddMultiple">
+      <span class="mgmt-card-icon">📚</span>
+      <div class="mgmt-card-body">
+        <div class="mgmt-card-title">הוספה מרובה לפי מיקום</div>
+        <div class="mgmt-card-desc">הגדר מיקום אחד והוסף ספרים רבים</div>
       </div>
       <span class="mgmt-card-arrow">›</span>
     </button>
@@ -241,6 +250,7 @@
       <div class="modal-footer">
         <button class="btn-secondary" id="bookModalCancel">ביטול</button>
         <button class="btn-primary" id="bookModalSave">💾 שמור ספר</button>
+        <button class="btn-primary" id="bookModalSaveAndAdd" style="display:none">💾 שמור והוסף עוד</button>
         <button class="btn-primary" id="importModalConfirm" style="display:none">📥 ייבא ספרים</button>
       </div>
     </div>
@@ -284,6 +294,7 @@
         <div class="loc-panel active" id="panelCabinets">
           <div class="loc-add-form">
             <input type="text" id="newCabinetNameMgr" placeholder="שם הארון החדש">
+            <input type="text" id="newCabinetOwnerMgr" placeholder="בעלים (אופציונלי)">
             <button class="btn-primary" id="addCabinetBtn">＋ הוסף</button>
           </div>
           <div class="loc-list" id="cabinetsList"></div>
@@ -304,7 +315,10 @@
         <!-- Rows -->
         <div class="loc-panel" id="panelRows">
           <div class="loc-add-form">
-            <select id="newRowShelf">
+            <select id="newRowCabinet">
+              <option value="">-- בחר ארון --</option>
+            </select>
+            <select id="newRowShelf" disabled>
               <option value="">-- בחר מדף --</option>
             </select>
             <input type="text" id="newRowNameMgr" placeholder="שם השורה החדשה">
@@ -316,6 +330,48 @@
       </div>
       <div class="modal-footer">
         <button class="btn-secondary" id="locationsModalClose2">סגור</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SHELF IMAGE MANAGEMENT MODAL ===== -->
+  <div class="modal-overlay" id="shelfImgMgmtModal">
+    <div class="modal modal-small">
+      <div class="modal-header">
+        <h2>📷 תמונת מדף: <span id="shelfImgMgmtName" style="font-weight:normal"></span></h2>
+        <button class="modal-close" id="shelfImgMgmtClose">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="shelfImgCurrentWrap" style="text-align:center;margin-bottom:16px;display:none">
+          <img id="shelfImgCurrent" src="" style="max-width:100%;max-height:300px;border-radius:var(--r-md);border:1px solid var(--color-border)" alt="תמונת מדף">
+          <div style="margin-top:10px">
+            <button class="btn-link" id="shelfImgDeleteBtn" style="color:var(--color-danger)">🗑️ מחק תמונה</button>
+          </div>
+        </div>
+        <div style="text-align:center">
+          <button class="btn-primary" id="shelfImgPickBtn">📷 בחר / החלף תמונה</button>
+          <input type="file" id="shelfImgFileInput" accept="image/*" style="display:none">
+          <p style="font-size:.78rem;color:var(--color-muted);margin-top:10px">התמונה נשמרת ב-Google Sheets<br>מומלץ: תמונת סקירה קטנה של המדף</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="shelfImgMgmtClose2">סגור</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SHELF IMAGE VIEWER MODAL ===== -->
+  <div class="modal-overlay" id="shelfImgViewModal">
+    <div class="modal modal-small">
+      <div class="modal-header">
+        <h2>📷 <span id="shelfImgViewTitle"></span></h2>
+        <button class="modal-close" id="shelfImgViewClose">✕</button>
+      </div>
+      <div class="modal-body" style="text-align:center;padding:16px">
+        <img id="shelfImgViewImg" src="" style="max-width:100%;max-height:60vh;border-radius:var(--r-md)" alt="תמונת מדף">
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="shelfImgViewClose2">סגור</button>
       </div>
     </div>
   </div>

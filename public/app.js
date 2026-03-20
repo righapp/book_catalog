@@ -7,7 +7,7 @@ const state = {
   view: 'grid',        // 'grid' | 'list'
   search: '',
   sort: 'name-asc',   // 'name-asc' | 'name-desc' | 'author-asc' | 'author-desc' | 'location'
-  filter: { cabinetId: null, shelfId: null, rowId: null },
+  filter: { cabinetId: null, shelfId: null, rowId: null, owner: null },
   mobileTab: 'catalog', // 'catalog' | 'manage'
   editingBookId: null,
   deletingBookId: null,
@@ -87,6 +87,11 @@ function sortBooks(books) {
 // ---- Filter & Search ----
 function getFilteredBooks() {
   return db.books.filter(book => {
+    if (state.filter.owner) {
+      const cab = book.cabinetId ? getCabinet(book.cabinetId) : null;
+      const bookOwner = (cab && cab.owner) ? cab.owner.trim().toLowerCase() : '';
+      if (bookOwner !== state.filter.owner.trim().toLowerCase()) return false;
+    }
     if (state.filter.rowId     && book.rowId     !== state.filter.rowId)     return false;
     if (state.filter.shelfId   && book.shelfId   !== state.filter.shelfId)   return false;
     if (state.filter.cabinetId && book.cabinetId !== state.filter.cabinetId) return false;
@@ -125,7 +130,7 @@ function renderStats() {
   document.getElementById('mobileCount').textContent       = `${filtered.length} ספרים`;
 
   // Filter badge
-  const hasFilter = state.filter.cabinetId || state.filter.shelfId || state.filter.rowId || state.search;
+  const hasFilter = state.filter.cabinetId || state.filter.shelfId || state.filter.rowId || state.filter.owner || state.search;
   const badge = document.getElementById('filterBadge');
   if (hasFilter) { badge.textContent = ''; badge.classList.add('visible'); }
   else           { badge.classList.remove('visible'); }
@@ -168,7 +173,31 @@ function renderLocationTree() {
   const tree = document.getElementById('locationTree');
   const f = state.filter;
 
-  let html = `<div class="tree-all ${!f.cabinetId && !f.shelfId && !f.rowId ? 'active' : ''}" data-action="filter-all">
+  // Owner filter section — only if there are cabinets with owners
+  const owners = [...new Set(
+    db.locations.cabinets
+      .filter(c => c.owner && c.owner.trim())
+      .map(c => c.owner.trim())
+  )].sort();
+
+  let html = '';
+  if (owners.length > 0) {
+    const ownerOptions = owners.map(o => {
+      const count = db.books.filter(b => {
+        const cab = b.cabinetId ? getCabinet(b.cabinetId) : null;
+        return cab && cab.owner && cab.owner.trim() === o;
+      }).length;
+      const active = f.owner === o;
+      return `<div class="owner-filter-option ${active ? 'active' : ''}" data-action="filter-owner" data-owner="${esc(o)}">
+        👤 ${esc(o)} <span class="tree-count">${count}</span>
+      </div>`;
+    }).join('');
+    html += `<div class="tree-section-title">סינון לפי בעלים</div>
+    ${ownerOptions}`;
+  }
+
+  html += `<div class="tree-section-title">סינון לפי מיקום</div>
+  <div class="tree-all ${!f.cabinetId && !f.shelfId && !f.rowId && !f.owner ? 'active' : ''}" data-action="filter-all">
     📚 כל הספרים
     <span class="tree-count">${db.books.length}</span>
   </div>`;
@@ -218,6 +247,82 @@ function renderLocationTree() {
   tree.innerHTML = html;
 }
 
+// ---- Duplicate Detection ----
+function getOwnerGroup(book) {
+  if (!book.cabinetId) return null;
+  const cab = getCabinet(book.cabinetId);
+  if (!cab || !cab.owner) return null;
+  return cab.owner.trim().toLowerCase();
+}
+
+function getDuplicateGroups() {
+  const groups = {};
+  for (const book of db.books) {
+    const ownerGroup = getOwnerGroup(book);
+    if (!ownerGroup) continue; // only check books in cabinets with an owner
+    const key = `${ownerGroup}|${book.name.toLowerCase().trim()}|${book.author.toLowerCase().trim()}`;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(book);
+  }
+  return Object.values(groups).filter(g => g.length > 1);
+}
+
+function renderDuplicateCard(books) {
+  const copies = books.map((book, i) => {
+    const loc    = getLocationLabel(book);
+    const badges = loc.map(l => `<span class="location-badge">${esc(l)}</span>`).join('');
+    const shelf  = book.shelfId ? getShelf(book.shelfId) : null;
+    const imgBtn = shelf && shelf.image
+      ? `<button class="btn-shelf-img" data-action="view-shelf-img" data-shelf-id="${book.shelfId}" title="צפה בתמונת המדף">📷</button>`
+      : '';
+    return `<div class="duplicate-copy">
+      <span class="duplicate-copy-label">עותק ${i + 1}</span>
+      <div class="book-card-location">${badges || '<span class="location-badge" style="opacity:.5">ללא מיקום</span>'}${imgBtn}</div>
+      <div class="book-card-actions">
+        <button class="btn-card-edit" data-action="edit" data-id="${book.id}">✏️ עריכה</button>
+        <button class="btn-card-delete" data-action="delete" data-id="${book.id}">🗑️ מחק</button>
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="book-card duplicate-card">
+    <div class="duplicate-badge">⚠️ ספר כפול (${books.length} עותקים)</div>
+    <div class="book-card-top">
+      <span class="book-card-title">${esc(books[0].name)}</span>
+      <span class="book-card-author">${esc(books[0].author)}</span>
+    </div>
+    ${copies}
+  </div>`;
+}
+
+function renderDuplicateRow(books) {
+  const copies = books.map((book, i) => {
+    const loc    = getLocationLabel(book);
+    const badges = loc.map(l => `<span class="location-badge">${esc(l)}</span>`).join('');
+    const shelf  = book.shelfId ? getShelf(book.shelfId) : null;
+    const imgBtn = shelf && shelf.image
+      ? `<button class="btn-shelf-img" data-action="view-shelf-img" data-shelf-id="${book.shelfId}" title="צפה בתמונת המדף">📷</button>`
+      : '';
+    return `<div class="duplicate-copy">
+      <span class="duplicate-copy-label">עותק ${i + 1}</span>
+      <div class="book-row-location">${badges || '<span class="location-badge" style="opacity:.5">ללא מיקום</span>'}${imgBtn}</div>
+      <div class="book-row-actions">
+        <button class="btn-card-edit" data-action="edit" data-id="${book.id}">✏️</button>
+        <button class="btn-card-delete" data-action="delete" data-id="${book.id}">🗑️</button>
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="book-row duplicate-row">
+    <div class="book-row-main">
+      <div class="duplicate-badge" style="margin-bottom:4px">⚠️ ספר כפול (${books.length} עותקים)</div>
+      <div class="book-card-top">
+        <span class="book-card-title">${esc(books[0].name)}</span>
+        <span class="book-card-author">${esc(books[0].author)}</span>
+      </div>
+      ${copies}
+    </div>
+  </div>`;
+}
+
 // ---- Books ----
 function renderBooks() {
   const books = sortBooks(getFilteredBooks());
@@ -233,22 +338,49 @@ function renderBooks() {
   empty.classList.add('hidden');
   container.className = state.view === 'grid' ? 'books-grid' : 'books-list';
 
+  // Build duplicate map based on books visible after filtering
+  const allDuplicateGroups = getDuplicateGroups();
+  const bookIdSet = new Set(books.map(b => b.id));
+  const duplicateMap = new Map(); // bookId → [visible copies in group]
+  const secondaryIds = new Set(); // IDs to skip (shown via primary)
+  for (const group of allDuplicateGroups) {
+    const visibleCopies = group.filter(b => bookIdSet.has(b.id));
+    if (visibleCopies.length < 2) continue; // only one copy visible → show normally
+    const primary = visibleCopies[0];
+    for (const book of visibleCopies) {
+      duplicateMap.set(book.id, visibleCopies);
+      if (book.id !== primary.id) secondaryIds.add(book.id);
+    }
+  }
+
+  const displayBooks = books.filter(b => !secondaryIds.has(b.id));
+
   if (state.view === 'grid') {
-    container.innerHTML = books.map(renderBookCard).join('');
+    container.innerHTML = displayBooks.map(book => {
+      const group = duplicateMap.get(book.id);
+      return group ? renderDuplicateCard(group) : renderBookCard(book);
+    }).join('');
   } else {
-    container.innerHTML = books.map(renderBookRow).join('');
+    container.innerHTML = displayBooks.map(book => {
+      const group = duplicateMap.get(book.id);
+      return group ? renderDuplicateRow(group) : renderBookRow(book);
+    }).join('');
   }
 }
 
 function renderBookCard(book) {
   const loc = getLocationLabel(book);
   const badges = loc.map(l => `<span class="location-badge">${l}</span>`).join('');
+  const shelf  = book.shelfId ? getShelf(book.shelfId) : null;
+  const imgBtn = shelf && shelf.image
+    ? `<button class="btn-shelf-img" data-action="view-shelf-img" data-shelf-id="${book.shelfId}" title="צפה בתמונת המדף">📷</button>`
+    : '';
   return `<div class="book-card">
     <div class="book-card-top">
       <span class="book-card-title">${esc(book.name)}</span>
       <span class="book-card-author">${esc(book.author)}</span>
     </div>
-    <div class="book-card-location">${badges || '<span class="location-badge" style="opacity:.5">ללא מיקום</span>'}</div>
+    <div class="book-card-location">${badges || '<span class="location-badge" style="opacity:.5">ללא מיקום</span>'}${imgBtn}</div>
     <div class="book-card-actions">
       <button class="btn-card-edit" data-action="edit" data-id="${book.id}">✏️ עריכה</button>
       <button class="btn-card-delete" data-action="delete" data-id="${book.id}">🗑️ מחק</button>
@@ -259,13 +391,17 @@ function renderBookCard(book) {
 function renderBookRow(book) {
   const loc = getLocationLabel(book);
   const badges = loc.map(l => `<span class="location-badge">${l}</span>`).join('');
+  const shelf  = book.shelfId ? getShelf(book.shelfId) : null;
+  const imgBtn = shelf && shelf.image
+    ? `<button class="btn-shelf-img" data-action="view-shelf-img" data-shelf-id="${book.shelfId}" title="צפה בתמונת המדף">📷</button>`
+    : '';
   return `<div class="book-row">
     <div class="book-row-main">
       <div class="book-card-top">
         <span class="book-card-title">${esc(book.name)}</span>
         <span class="book-card-author">${esc(book.author)}</span>
       </div>
-      <div class="book-row-location">${badges || '<span class="location-badge" style="opacity:.5">ללא מיקום</span>'}</div>
+      <div class="book-row-location">${badges || '<span class="location-badge" style="opacity:.5">ללא מיקום</span>'}${imgBtn}</div>
     </div>
     <div class="book-row-actions">
       <button class="btn-card-edit" data-action="edit" data-id="${book.id}">✏️ עריכה</button>
@@ -301,15 +437,19 @@ function switchBookModalTab(tab) {
   document.getElementById('tabManual').classList.toggle('active', tab === 'manual');
   document.getElementById('tabExcel').classList.toggle('active',  tab === 'excel');
 
-  const saveBtn   = document.getElementById('bookModalSave');
-  const importBtn = document.getElementById('importModalConfirm');
+  const saveBtn      = document.getElementById('bookModalSave');
+  const saveAddBtn   = document.getElementById('bookModalSaveAndAdd');
+  const importBtn    = document.getElementById('importModalConfirm');
+  const isAddMode    = !state.editingBookId;
   if (tab === 'manual') {
-    saveBtn.style.display   = '';
-    importBtn.style.display = 'none';
+    saveBtn.style.display    = '';
+    saveAddBtn.style.display = isAddMode ? '' : 'none';
+    importBtn.style.display  = 'none';
   } else {
-    saveBtn.style.display   = 'none';
+    saveBtn.style.display    = 'none';
+    saveAddBtn.style.display = 'none';
     // Import button is shown only after a file is loaded — handled in showImportResult
-    importBtn.style.display = 'none';
+    importBtn.style.display  = 'none';
   }
 }
 
@@ -317,6 +457,8 @@ function openAddBookModal() {
   state.editingBookId = null;
   document.getElementById('bookModalTitle').textContent = 'הוסף ספר חדש';
   document.getElementById('bookModalSave').textContent  = '💾 שמור ספר';
+  document.getElementById('bookModalSave').style.display = '';
+  document.getElementById('bookModalSaveAndAdd').style.display = '';
   document.getElementById('bookModalTabs').style.display = '';
   resetBookForm();
   resetExcelTab();
@@ -344,11 +486,12 @@ function openEditBookModal(id) {
     if (book.shelfId) populateRowSelect(book.shelfId, book.rowId);
   }
 
-  // Force manual tab visible, import button hidden
+  // Force manual tab visible, import button hidden, multi-add hidden
   document.getElementById('tabManual').classList.add('active');
   document.getElementById('tabExcel').classList.remove('active');
-  document.getElementById('bookModalSave').style.display   = '';
-  document.getElementById('importModalConfirm').style.display = 'none';
+  document.getElementById('bookModalSave').style.display      = '';
+  document.getElementById('bookModalSaveAndAdd').style.display = 'none';
+  document.getElementById('importModalConfirm').style.display  = 'none';
 
   openModal('bookModal');
   document.getElementById('bookName').focus();
@@ -476,6 +619,69 @@ async function saveBook() {
   }
 }
 
+// ---- Save Book (and continue adding) ----
+async function saveBookAndContinue() {
+  const name   = document.getElementById('bookName').value.trim();
+  const author = document.getElementById('bookAuthor').value.trim();
+  let valid = true;
+
+  document.getElementById('bookNameError').textContent   = '';
+  document.getElementById('bookAuthorError').textContent = '';
+
+  if (!name)   { document.getElementById('bookNameError').textContent   = 'שדה חובה'; valid = false; }
+  if (!author) { document.getElementById('bookAuthorError').textContent = 'שדה חובה'; valid = false; }
+  if (!valid)  return;
+
+  const cabinetVal = document.getElementById('cabinetSelect').value;
+  const shelfVal   = document.getElementById('shelfSelect').value;
+  const rowVal     = document.getElementById('rowSelect').value;
+
+  const bookData = {
+    name,
+    author,
+    cabinetId: cabinetVal && cabinetVal !== 'NEW' ? parseInt(cabinetVal) : null,
+    shelfId:   shelfVal   && shelfVal   !== 'NEW' ? parseInt(shelfVal)   : null,
+    rowId:     rowVal     && rowVal     !== 'NEW' ? parseInt(rowVal)     : null,
+  };
+
+  showLoadingOverlay(true);
+  try {
+    const result = await apiFetch('POST', '/api/books', bookData);
+    db.books.push(result);
+    showToast(`"${name}" נוסף ✓`, 'success');
+    render();
+
+    // Keep modal open, keep location, clear only name/author
+    const savedCabinetId = bookData.cabinetId;
+    const savedShelfId   = bookData.shelfId;
+    const savedRowId     = bookData.rowId;
+
+    document.getElementById('bookName').value   = '';
+    document.getElementById('bookAuthor').value = '';
+    document.getElementById('bookNameError').textContent   = '';
+    document.getElementById('bookAuthorError').textContent = '';
+    hideNewRow('newCabinetRow');
+    hideNewRow('newShelfRow');
+    hideNewRow('newRowRow');
+
+    populateCabinetSelect(savedCabinetId);
+    if (savedCabinetId) {
+      populateShelfSelect(savedCabinetId, savedShelfId);
+      if (savedShelfId) populateRowSelect(savedShelfId, savedRowId);
+      else populateRowSelect(null, null);
+    } else {
+      populateShelfSelect(null, null);
+      populateRowSelect(null, null);
+    }
+
+    document.getElementById('bookName').focus();
+  } catch (e) {
+    showToast('שגיאה: ' + e.message, 'error');
+  } finally {
+    showLoadingOverlay(false);
+  }
+}
+
 // ---- Delete Modal ----
 function openDeleteModal(id) {
   const book = db.books.find(b => b.id === id);
@@ -508,19 +714,106 @@ function openLocationsModal() {
   openModal('locationsModal');
 }
 
+// ---- Shelf Image ----
+let shelfImgTargetId = null;
+
+function compressImage(file, maxPx, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const scale  = Math.min(1, maxPx / Math.max(img.width, img.height));
+        const w      = Math.round(img.width  * scale);
+        const h      = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function openShelfImgMgmt(shelfId) {
+  const shelf = getShelf(shelfId);
+  if (!shelf) return;
+  shelfImgTargetId = shelfId;
+  document.getElementById('shelfImgMgmtName').textContent = shelf.name;
+  const currentWrap = document.getElementById('shelfImgCurrentWrap');
+  const currentImg  = document.getElementById('shelfImgCurrent');
+  if (shelf.image) {
+    currentImg.src = shelf.image;
+    currentWrap.style.display = '';
+  } else {
+    currentWrap.style.display = 'none';
+  }
+  openModal('shelfImgMgmtModal');
+}
+
+async function saveShelfImage(base64) {
+  showLoadingOverlay(true);
+  try {
+    await apiFetch('PUT', `/api/locations/${shelfImgTargetId}`, { image: base64 });
+    const shelf = getShelf(shelfImgTargetId);
+    if (shelf) shelf.image = base64;
+    const currentWrap = document.getElementById('shelfImgCurrentWrap');
+    const currentImg  = document.getElementById('shelfImgCurrent');
+    if (base64) {
+      currentImg.src = base64;
+      currentWrap.style.display = '';
+    } else {
+      currentImg.src = '';
+      currentWrap.style.display = 'none';
+    }
+    renderShelvesList(parseInt(document.getElementById('newShelfCabinet').value) || null);
+    render();
+    showToast(base64 ? 'התמונה נשמרה ✓' : 'התמונה נמחקה ✓', 'success');
+  } catch (e) {
+    showToast('שגיאה: ' + e.message, 'error');
+  } finally {
+    showLoadingOverlay(false);
+  }
+}
+
+function openShelfImgViewer(shelfId) {
+  const shelf = getShelf(shelfId);
+  if (!shelf || !shelf.image) return;
+  document.getElementById('shelfImgViewTitle').textContent = shelf.name;
+  document.getElementById('shelfImgViewImg').src = shelf.image;
+  openModal('shelfImgViewModal');
+}
+
 function renderLocationsManager() {
-  // Populate cabinet select in shelves tab
+  // Populate cabinet selects in shelves + rows tabs
   const shelfCabSel = document.getElementById('newShelfCabinet');
+  const savedShelfCab = shelfCabSel.value;
   shelfCabSel.innerHTML = '<option value="">-- בחר ארון --</option>';
   db.locations.cabinets.forEach(c => shelfCabSel.appendChild(new Option(c.name, c.id)));
+  if (savedShelfCab) shelfCabSel.value = savedShelfCab;
 
-  // Populate shelf select in rows tab (all shelves with cabinet name)
+  const rowCabSel = document.getElementById('newRowCabinet');
+  const savedRowCab = rowCabSel.value;
+  rowCabSel.innerHTML = '<option value="">-- בחר ארון --</option>';
+  db.locations.cabinets.forEach(c => rowCabSel.appendChild(new Option(c.name, c.id)));
+  if (savedRowCab) rowCabSel.value = savedRowCab;
+
+  // Populate shelf select in rows tab filtered by selected cabinet
   const rowShelfSel = document.getElementById('newRowShelf');
+  const savedRowShelf = rowShelfSel.value;
+  const filterCabForRows = parseInt(rowCabSel.value) || null;
   rowShelfSel.innerHTML = '<option value="">-- בחר מדף --</option>';
-  db.locations.shelves.forEach(s => {
-    const cab = getCabinet(s.cabinetId);
-    rowShelfSel.appendChild(new Option(`${cab ? cab.name + ' / ' : ''}${s.name}`, s.id));
-  });
+  rowShelfSel.disabled = !filterCabForRows;
+  if (filterCabForRows) {
+    db.locations.shelves
+      .filter(s => s.cabinetId === filterCabForRows)
+      .forEach(s => rowShelfSel.appendChild(new Option(s.name, s.id)));
+    if (savedRowShelf) rowShelfSel.value = savedRowShelf;
+  }
 
   // Cabinets list
   const cabList = document.getElementById('cabinetsList');
@@ -529,46 +822,88 @@ function renderLocationsManager() {
   } else {
     cabList.innerHTML = db.locations.cabinets.map(c => {
       const booksCount = db.books.filter(b => b.cabinetId === c.id).length;
-      return `<div class="loc-item">
-        <div><div class="loc-item-name">🗄️ ${esc(c.name)}</div>
-        <div class="loc-item-meta">${booksCount} ספרים</div></div>
-        <button class="loc-item-delete" data-action="del-cabinet" data-id="${c.id}">מחק</button>
+      const ownerLine  = c.owner ? `<div class="loc-item-owner">👤 ${esc(c.owner)}</div>` : '';
+      const editBtnLabel = c.owner ? '👤 ערוך בעלים' : '👤 הוסף בעלים';
+      return `<div class="loc-item-cab">
+        <div class="loc-item-cab-top">
+          <div class="loc-item-cab-info">
+            <div class="loc-item-name">🗄️ ${esc(c.name)}</div>
+            ${ownerLine}
+            <div class="loc-item-meta">${booksCount} ספרים</div>
+          </div>
+          <div class="loc-item-cab-btns">
+            <button class="loc-item-edit-owner" data-action="edit-owner" data-id="${c.id}">${editBtnLabel}</button>
+            <button class="loc-item-delete" data-action="del-cabinet" data-id="${c.id}">מחק</button>
+          </div>
+        </div>
+        <div class="loc-owner-edit-row" id="ownerEditRow_${c.id}">
+          <input type="text" placeholder="הכנס שם בעלים..." value="${esc(c.owner || '')}">
+          <button class="btn-confirm" data-action="save-owner" data-id="${c.id}" title="שמור">✓</button>
+          <button class="btn-cancel-sm" data-action="cancel-owner" data-id="${c.id}" title="בטל">✕</button>
+        </div>
       </div>`;
     }).join('');
   }
 
-  // Shelves list
+  // Shelves list — filtered by selected cabinet
+  renderShelvesList(parseInt(shelfCabSel.value) || null);
+
+  // Rows list — filtered by selected shelf
+  renderRowsList(parseInt(rowShelfSel.value) || null);
+}
+
+function renderShelvesList(filterCabinetId) {
   const shelvesList = document.getElementById('shelvesList');
-  if (db.locations.shelves.length === 0) {
-    shelvesList.innerHTML = '<div style="color:var(--color-muted);padding:10px">אין מדפים</div>';
-  } else {
-    shelvesList.innerHTML = db.locations.shelves.map(s => {
-      const cab = getCabinet(s.cabinetId);
-      const booksCount = db.books.filter(b => b.shelfId === s.id).length;
-      return `<div class="loc-item">
-        <div><div class="loc-item-name">📋 ${esc(s.name)}</div>
-        <div class="loc-item-meta">${cab ? cab.name : ''} · ${booksCount} ספרים</div></div>
-        <button class="loc-item-delete" data-action="del-shelf" data-id="${s.id}">מחק</button>
-      </div>`;
-    }).join('');
-  }
+  const shelves = filterCabinetId
+    ? db.locations.shelves.filter(s => s.cabinetId === filterCabinetId)
+    : [];
 
-  // Rows list
-  const rowsList = document.getElementById('rowsList');
-  if (db.locations.rows.length === 0) {
-    rowsList.innerHTML = '<div style="color:var(--color-muted);padding:10px">אין שורות</div>';
-  } else {
-    rowsList.innerHTML = db.locations.rows.map(r => {
-      const shelf = getShelf(r.shelfId);
-      const cab   = shelf ? getCabinet(shelf.cabinetId) : null;
-      const booksCount = db.books.filter(b => b.rowId === r.id).length;
-      return `<div class="loc-item">
-        <div><div class="loc-item-name">• ${esc(r.name)}</div>
-        <div class="loc-item-meta">${cab ? cab.name + ' / ' : ''}${shelf ? shelf.name : ''} · ${booksCount} ספרים</div></div>
-        <button class="loc-item-delete" data-action="del-row" data-id="${r.id}">מחק</button>
-      </div>`;
-    }).join('');
+  if (!filterCabinetId) {
+    shelvesList.innerHTML = '<div style="color:var(--color-muted);padding:10px">בחר ארון להצגת המדפים שלו</div>';
+    return;
   }
+  if (shelves.length === 0) {
+    shelvesList.innerHTML = '<div style="color:var(--color-muted);padding:10px">אין מדפים בארון זה</div>';
+    return;
+  }
+  shelvesList.innerHTML = shelves.map(s => {
+    const cab = getCabinet(s.cabinetId);
+    const booksCount = db.books.filter(b => b.shelfId === s.id).length;
+    return `<div class="loc-item">
+      <div><div class="loc-item-name">📋 ${esc(s.name)}</div>
+      <div class="loc-item-meta">${cab ? cab.name : ''} · ${booksCount} ספרים</div></div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="loc-item-img-btn${s.image ? ' has-image' : ''}" data-action="shelf-img" data-id="${s.id}" title="${s.image ? 'החלף תמונה' : 'הוסף תמונה'}">📷</button>
+        <button class="loc-item-delete" data-action="del-shelf" data-id="${s.id}">מחק</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderRowsList(filterShelfId) {
+  const rowsList = document.getElementById('rowsList');
+  const rows = filterShelfId
+    ? db.locations.rows.filter(r => r.shelfId === filterShelfId)
+    : [];
+
+  if (!filterShelfId) {
+    rowsList.innerHTML = '<div style="color:var(--color-muted);padding:10px">בחר מדף להצגת השורות שלו</div>';
+    return;
+  }
+  if (rows.length === 0) {
+    rowsList.innerHTML = '<div style="color:var(--color-muted);padding:10px">אין שורות במדף זה</div>';
+    return;
+  }
+  rowsList.innerHTML = rows.map(r => {
+    const shelf = getShelf(r.shelfId);
+    const cab   = shelf ? getCabinet(shelf.cabinetId) : null;
+    const booksCount = db.books.filter(b => b.rowId === r.id).length;
+    return `<div class="loc-item">
+      <div><div class="loc-item-name">• ${esc(r.name)}</div>
+      <div class="loc-item-meta">${cab ? cab.name + ' / ' : ''}${shelf ? shelf.name : ''} · ${booksCount} ספרים</div></div>
+      <button class="loc-item-delete" data-action="del-row" data-id="${r.id}">מחק</button>
+    </div>`;
+  }).join('');
 }
 
 // ============================================================
@@ -812,7 +1147,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Clear filter
   document.getElementById('clearFilterBtn').addEventListener('click', () => {
-    state.filter = { cabinetId: null, shelfId: null, rowId: null };
+    state.filter = { cabinetId: null, shelfId: null, rowId: null, owner: null };
     render();
   });
 
@@ -822,31 +1157,38 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!el) return;
     const action = el.dataset.action;
 
-    if (action === 'filter-all') {
-      state.filter = { cabinetId: null, shelfId: null, rowId: null };
+    if (action === 'filter-owner') {
+      const owner = el.dataset.owner;
+      if (state.filter.owner === owner) {
+        state.filter = { cabinetId: null, shelfId: null, rowId: null, owner: null };
+      } else {
+        state.filter = { cabinetId: null, shelfId: null, rowId: null, owner };
+      }
+    } else if (action === 'filter-all') {
+      state.filter = { cabinetId: null, shelfId: null, rowId: null, owner: null };
     } else if (action === 'filter-cabinet') {
       const id = parseInt(el.dataset.id);
       if (state.filter.cabinetId === id && !state.filter.shelfId) {
-        state.filter = { cabinetId: null, shelfId: null, rowId: null };
+        state.filter = { cabinetId: null, shelfId: null, rowId: null, owner: null };
       } else {
-        state.filter = { cabinetId: id, shelfId: null, rowId: null };
+        state.filter = { cabinetId: id, shelfId: null, rowId: null, owner: null };
       }
     } else if (action === 'filter-shelf') {
       const shelfId   = parseInt(el.dataset.id);
       const cabinetId = parseInt(el.dataset.cabinet);
       if (state.filter.shelfId === shelfId && !state.filter.rowId) {
-        state.filter = { cabinetId, shelfId: null, rowId: null };
+        state.filter = { cabinetId, shelfId: null, rowId: null, owner: null };
       } else {
-        state.filter = { cabinetId, shelfId, rowId: null };
+        state.filter = { cabinetId, shelfId, rowId: null, owner: null };
       }
     } else if (action === 'filter-row') {
       const rowId     = parseInt(el.dataset.id);
       const shelfId   = parseInt(el.dataset.shelf);
       const cabinetId = parseInt(el.dataset.cabinet);
       if (state.filter.rowId === rowId) {
-        state.filter = { cabinetId, shelfId, rowId: null };
+        state.filter = { cabinetId, shelfId, rowId: null, owner: null };
       } else {
-        state.filter = { cabinetId, shelfId, rowId };
+        state.filter = { cabinetId, shelfId, rowId, owner: null };
       }
     }
     render();
@@ -856,14 +1198,16 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('booksContainer').addEventListener('click', e => {
     const el = e.target.closest('[data-action]');
     if (!el) return;
-    if (el.dataset.action === 'edit')   openEditBookModal(parseInt(el.dataset.id));
-    if (el.dataset.action === 'delete') openDeleteModal(parseInt(el.dataset.id));
+    if (el.dataset.action === 'edit')           openEditBookModal(parseInt(el.dataset.id));
+    if (el.dataset.action === 'delete')         openDeleteModal(parseInt(el.dataset.id));
+    if (el.dataset.action === 'view-shelf-img') openShelfImgViewer(parseInt(el.dataset.shelfId));
   });
 
   // ---- Book Modal ----
   document.getElementById('bookModalClose').addEventListener('click',  () => closeModal('bookModal'));
   document.getElementById('bookModalCancel').addEventListener('click', () => closeModal('bookModal'));
   document.getElementById('bookModalSave').addEventListener('click', saveBook);
+  document.getElementById('bookModalSaveAndAdd').addEventListener('click', saveBookAndContinue);
 
   // Cabinet select change
   document.getElementById('cabinetSelect').addEventListener('change', e => {
@@ -1003,15 +1347,43 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // Filter shelves list by cabinet selection in manager
+  document.getElementById('newShelfCabinet').addEventListener('change', () => {
+    const cabinetId = parseInt(document.getElementById('newShelfCabinet').value) || null;
+    renderShelvesList(cabinetId);
+  });
+
+  // Filter rows by cabinet in manager (cascade: cabinet → shelf selector)
+  document.getElementById('newRowCabinet').addEventListener('change', () => {
+    const cabinetId = parseInt(document.getElementById('newRowCabinet').value) || null;
+    const rowShelfSel = document.getElementById('newRowShelf');
+    rowShelfSel.innerHTML = '<option value="">-- בחר מדף --</option>';
+    rowShelfSel.disabled = !cabinetId;
+    if (cabinetId) {
+      db.locations.shelves
+        .filter(s => s.cabinetId === cabinetId)
+        .forEach(s => rowShelfSel.appendChild(new Option(s.name, s.id)));
+    }
+    renderRowsList(null);
+  });
+
+  // Filter rows list by shelf selection in manager
+  document.getElementById('newRowShelf').addEventListener('change', () => {
+    const shelfId = parseInt(document.getElementById('newRowShelf').value) || null;
+    renderRowsList(shelfId);
+  });
+
   // Add cabinet from manager
   document.getElementById('addCabinetBtn').addEventListener('click', async () => {
-    const name = document.getElementById('newCabinetNameMgr').value.trim();
+    const name  = document.getElementById('newCabinetNameMgr').value.trim();
+    const owner = document.getElementById('newCabinetOwnerMgr').value.trim();
     if (!name) { showToast('הכנס שם לארון', 'error'); return; }
     showLoadingOverlay(true);
     try {
-      const result = await apiFetch('POST', '/api/locations', { type: 'ארון', name });
-      db.locations.cabinets.push({ id: result.id, name: result.name });
-      document.getElementById('newCabinetNameMgr').value = '';
+      const result = await apiFetch('POST', '/api/locations', { type: 'ארון', name, owner });
+      db.locations.cabinets.push({ id: result.id, name: result.name, owner: result.owner || '' });
+      document.getElementById('newCabinetNameMgr').value  = '';
+      document.getElementById('newCabinetOwnerMgr').value = '';
       renderLocationsManager();
       render();
       showToast(`ארון "${name}" נוסף ✓`, 'success');
@@ -1064,18 +1436,88 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Delete location (delegated from manager lists)
-  ['cabinetsList', 'shelvesList', 'rowsList'].forEach(listId => {
+  // Enter/Escape key in owner edit inputs
+  document.getElementById('cabinetsList').addEventListener('keydown', e => {
+    if (e.target.tagName !== 'INPUT') return;
+    const row = e.target.closest('.loc-owner-edit-row');
+    if (!row) return;
+    const id = row.id.replace('ownerEditRow_', '');
+    if (e.key === 'Enter') {
+      row.querySelector('[data-action="save-owner"]').click();
+    } else if (e.key === 'Escape') {
+      row.querySelector('[data-action="cancel-owner"]').click();
+    }
+  });
+
+  // Delete / edit-owner location (delegated from manager lists)
+  document.getElementById('cabinetsList').addEventListener('click', async e => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const id = parseInt(btn.dataset.id);
+
+    if (btn.dataset.action === 'edit-owner') {
+      const row = document.getElementById(`ownerEditRow_${id}`);
+      if (row) {
+        row.classList.add('visible');
+        const input = row.querySelector('input');
+        if (input) { input.focus(); input.select(); }
+      }
+      return;
+    }
+    if (btn.dataset.action === 'cancel-owner') {
+      const row = document.getElementById(`ownerEditRow_${id}`);
+      if (row) row.classList.remove('visible');
+      return;
+    }
+    if (btn.dataset.action === 'save-owner') {
+      const row   = document.getElementById(`ownerEditRow_${id}`);
+      const owner = row ? row.querySelector('input').value.trim() : '';
+      showLoadingOverlay(true);
+      try {
+        await apiFetch('PUT', `/api/locations/${id}`, { owner });
+        const cab = db.locations.cabinets.find(c => c.id === id);
+        if (cab) cab.owner = owner;
+        renderLocationsManager();
+        render();
+        showToast('הבעלים עודכן ✓', 'success');
+      } catch (e) {
+        showToast('שגיאה: ' + e.message, 'error');
+      } finally {
+        showLoadingOverlay(false);
+      }
+      return;
+    }
+    if (btn.dataset.action === 'del-cabinet') {
+      const usedByShelf = db.locations.shelves.some(s => s.cabinetId === id);
+      const usedByBook  = db.books.some(b => b.cabinetId === id);
+      if (usedByShelf || usedByBook) { showToast('לא ניתן למחוק - יש מדפים או ספרים בארון זה', 'error'); return; }
+      showLoadingOverlay(true);
+      try {
+        await apiFetch('DELETE', `/api/locations/${id}`);
+        db.locations.cabinets = db.locations.cabinets.filter(c => c.id !== id);
+        renderLocationsManager();
+        render();
+        showToast('הארון נמחק ✓', 'success');
+      } catch (e) {
+        showToast('שגיאה: ' + e.message, 'error');
+      } finally {
+        showLoadingOverlay(false);
+      }
+    }
+  });
+
+  ['shelvesList', 'rowsList'].forEach(listId => {
     document.getElementById(listId).addEventListener('click', async e => {
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
       const id = parseInt(btn.dataset.id);
 
-      if (btn.dataset.action === 'del-cabinet') {
-        const usedByShelf = db.locations.shelves.some(s => s.cabinetId === id);
-        const usedByBook  = db.books.some(b => b.cabinetId === id);
-        if (usedByShelf || usedByBook) { showToast('לא ניתן למחוק - יש מדפים או ספרים בארון זה', 'error'); return; }
-      } else if (btn.dataset.action === 'del-shelf') {
+      if (btn.dataset.action === 'shelf-img') {
+        openShelfImgMgmt(id);
+        return;
+      }
+
+      if (btn.dataset.action === 'del-shelf') {
         const usedByRow  = db.locations.rows.some(r => r.shelfId === id);
         const usedByBook = db.books.some(b => b.shelfId === id);
         if (usedByRow || usedByBook) { showToast('לא ניתן למחוק - יש שורות או ספרים במדף זה', 'error'); return; }
@@ -1087,9 +1529,7 @@ document.addEventListener('DOMContentLoaded', () => {
       showLoadingOverlay(true);
       try {
         await apiFetch('DELETE', `/api/locations/${id}`);
-        if (btn.dataset.action === 'del-cabinet') {
-          db.locations.cabinets = db.locations.cabinets.filter(c => c.id !== id);
-        } else if (btn.dataset.action === 'del-shelf') {
+        if (btn.dataset.action === 'del-shelf') {
           db.locations.shelves = db.locations.shelves.filter(s => s.id !== id);
         } else if (btn.dataset.action === 'del-row') {
           db.locations.rows = db.locations.rows.filter(r => r.id !== id);
@@ -1105,8 +1545,38 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // ---- Shelf Image Management Modal ----
+  document.getElementById('shelfImgMgmtClose').addEventListener('click',  () => closeModal('shelfImgMgmtModal'));
+  document.getElementById('shelfImgMgmtClose2').addEventListener('click', () => closeModal('shelfImgMgmtModal'));
+
+  document.getElementById('shelfImgPickBtn').addEventListener('click', () => {
+    document.getElementById('shelfImgFileInput').value = '';
+    document.getElementById('shelfImgFileInput').click();
+  });
+
+  document.getElementById('shelfImgFileInput').addEventListener('change', async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      let base64 = await compressImage(file, 300, 0.75);
+      if (base64.length > 45000) base64 = await compressImage(file, 200, 0.65);
+      if (base64.length > 45000) { showToast('התמונה גדולה מדי גם לאחר דחיסה', 'error'); return; }
+      await saveShelfImage(base64);
+    } catch {
+      showToast('שגיאה בעיבוד התמונה', 'error');
+    }
+  });
+
+  document.getElementById('shelfImgDeleteBtn').addEventListener('click', async () => {
+    await saveShelfImage('');
+  });
+
+  // ---- Shelf Image Viewer Modal ----
+  document.getElementById('shelfImgViewClose').addEventListener('click',  () => closeModal('shelfImgViewModal'));
+  document.getElementById('shelfImgViewClose2').addEventListener('click', () => closeModal('shelfImgViewModal'));
+
   // Close modal on overlay click
-  ['bookModal', 'deleteModal', 'locationsModal'].forEach(id => {
+  ['bookModal', 'deleteModal', 'locationsModal', 'shelfImgMgmtModal', 'shelfImgViewModal'].forEach(id => {
     document.getElementById(id).addEventListener('click', e => {
       if (e.target === document.getElementById(id)) closeModal(id);
     });
@@ -1136,6 +1606,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Management view action cards
   document.getElementById('mgmtAddBook').addEventListener('click', openAddBookModal);
+
+  document.getElementById('mgmtAddMultiple').addEventListener('click', () => {
+    openAddBookModal();
+    // Focus user on the "save and add" flow — show a brief hint toast
+    showToast('השתמש ב"שמור והוסף עוד" לאחר בחירת מיקום', '');
+  });
 
   document.getElementById('mgmtImportExcel').addEventListener('click', () => {
     openAddBookModal();
