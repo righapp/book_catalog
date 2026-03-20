@@ -7,7 +7,7 @@ const state = {
   view: 'grid',        // 'grid' | 'list'
   search: '',
   sort: 'name-asc',   // 'name-asc' | 'name-desc' | 'author-asc' | 'author-desc' | 'location'
-  filter: { cabinetId: null, shelfId: null, rowId: null, owner: null },
+  filter: { cabinetId: null, shelfId: null, rowId: null, layerId: null, owner: null },
   mobileTab: 'catalog', // 'catalog' | 'manage'
   editingBookId: null,
   deletingBookId: null,
@@ -25,7 +25,7 @@ const SORT_LABELS = {
 // API LAYER
 // ============================================================
 
-let db = { books: [], locations: { cabinets: [], shelves: [], rows: [] } };
+let db = { books: [], locations: { cabinets: [], shelves: [], rows: [], layers: [] } };
 
 async function apiFetch(method, path, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
@@ -42,6 +42,7 @@ async function loadData() {
   const data = await apiFetch('GET', '/api/data');
   db.books     = data.books;
   db.locations = data.locations;
+  if (!db.locations.layers) db.locations.layers = [];
 }
 
 function showLoadingOverlay(show) {
@@ -52,12 +53,14 @@ function showLoadingOverlay(show) {
 function getCabinet(id)  { return db.locations.cabinets.find(c => c.id === id); }
 function getShelf(id)    { return db.locations.shelves.find(s => s.id === id); }
 function getRow(id)      { return db.locations.rows.find(r => r.id === id); }
+function getLayer(id)    { return db.locations.layers.find(l => l.id === id); }
 
 function getLocationLabel(book) {
   const parts = [];
   if (book.cabinetId) { const c = getCabinet(book.cabinetId); if (c) parts.push(c.name); }
   if (book.shelfId)   { const s = getShelf(book.shelfId);     if (s) parts.push(s.name); }
   if (book.rowId)     { const r = getRow(book.rowId);          if (r) parts.push(r.name); }
+  if (book.layerId)   { const l = getLayer(book.layerId);      if (l) parts.push(l.name); }
   return parts;
 }
 
@@ -74,9 +77,11 @@ function sortBooks(books) {
         const ca = getCabinet(a.cabinetId), cb = getCabinet(b.cabinetId);
         const sa = getShelf(a.shelfId),     sb = getShelf(b.shelfId);
         const ra = getRow(a.rowId),         rb = getRow(b.rowId);
+        const la = getLayer(a.layerId),     lb = getLayer(b.layerId);
         return collator.compare(ca?.name ?? '', cb?.name ?? '') ||
                collator.compare(sa?.name ?? '', sb?.name ?? '') ||
                collator.compare(ra?.name ?? '', rb?.name ?? '') ||
+               collator.compare(la?.name ?? '', lb?.name ?? '') ||
                collator.compare(a.name,         b.name);
       }
       default: return 0;
@@ -92,6 +97,7 @@ function getFilteredBooks() {
       const bookOwner = (cab && cab.owner) ? cab.owner.trim().toLowerCase() : '';
       if (bookOwner !== state.filter.owner.trim().toLowerCase()) return false;
     }
+    if (state.filter.layerId   && book.layerId   !== state.filter.layerId)   return false;
     if (state.filter.rowId     && book.rowId     !== state.filter.rowId)     return false;
     if (state.filter.shelfId   && book.shelfId   !== state.filter.shelfId)   return false;
     if (state.filter.cabinetId && book.cabinetId !== state.filter.cabinetId) return false;
@@ -130,7 +136,8 @@ function renderStats() {
   document.getElementById('mobileCount').textContent       = `${filtered.length} ספרים`;
 
   // Filter badge
-  const hasFilter = state.filter.cabinetId || state.filter.shelfId || state.filter.rowId || state.filter.owner || state.search;
+  const hasFilter = state.filter.cabinetId || state.filter.shelfId || state.filter.rowId ||
+                    state.filter.layerId || state.filter.owner || state.search;
   const badge = document.getElementById('filterBadge');
   if (hasFilter) { badge.textContent = ''; badge.classList.add('visible'); }
   else           { badge.classList.remove('visible'); }
@@ -197,7 +204,7 @@ function renderLocationTree() {
   }
 
   html += `<div class="tree-section-title">סינון לפי מיקום</div>
-  <div class="tree-all ${!f.cabinetId && !f.shelfId && !f.rowId && !f.owner ? 'active' : ''}" data-action="filter-all">
+  <div class="tree-all ${!f.cabinetId && !f.shelfId && !f.rowId && !f.layerId && !f.owner ? 'active' : ''}" data-action="filter-all">
     📚 כל הספרים
     <span class="tree-count">${db.books.length}</span>
   </div>`;
@@ -231,11 +238,33 @@ function renderLocationTree() {
         <div class="tree-rows ${shelfOpen ? 'open' : ''}">`;
 
       for (const row of shelfRows) {
-        const rowBooks = db.books.filter(b => b.rowId === row.id).length;
-        const rowActive = f.rowId === row.id;
-        html += `<div class="tree-row-item ${rowActive ? 'active' : ''}" data-action="filter-row" data-id="${row.id}" data-shelf="${shelf.id}" data-cabinet="${cab.id}">
-          • ${row.name} <span class="tree-count">${rowBooks}</span>
-        </div>`;
+        const rowLayers = db.locations.layers.filter(l => l.rowId === row.id);
+        const rowBooks  = db.books.filter(b => b.rowId === row.id).length;
+        const rowActive = f.rowId === row.id && !f.layerId;
+        const rowOpen   = f.rowId === row.id;
+
+        if (rowLayers.length > 0) {
+          html += `<div class="tree-row">
+            <div class="tree-row-header ${rowActive ? 'active' : ''}" data-action="filter-row" data-id="${row.id}" data-shelf="${shelf.id}" data-cabinet="${cab.id}">
+              · ${row.name} <span class="tree-count">${rowBooks}</span>
+              <span class="tree-toggle ${rowOpen ? 'open' : ''}">▶</span>
+            </div>
+            <div class="tree-layers ${rowOpen ? 'open' : ''}">`;
+
+          for (const layer of rowLayers) {
+            const layerBooks  = db.books.filter(b => b.layerId === layer.id).length;
+            const layerActive = f.layerId === layer.id;
+            html += `<div class="tree-layer-item ${layerActive ? 'active' : ''}" data-action="filter-layer" data-id="${layer.id}" data-row="${row.id}" data-shelf="${shelf.id}" data-cabinet="${cab.id}">
+              ‣ ${layer.name} <span class="tree-count">${layerBooks}</span>
+            </div>`;
+          }
+
+          html += `</div></div>`;
+        } else {
+          html += `<div class="tree-row-item ${rowActive ? 'active' : ''}" data-action="filter-row" data-id="${row.id}" data-shelf="${shelf.id}" data-cabinet="${cab.id}">
+            · ${row.name} <span class="tree-count">${rowBooks}</span>
+          </div>`;
+        }
       }
 
       html += `</div></div>`;
@@ -483,7 +512,10 @@ function openEditBookModal(id) {
   populateCabinetSelect(book.cabinetId);
   if (book.cabinetId) {
     populateShelfSelect(book.cabinetId, book.shelfId);
-    if (book.shelfId) populateRowSelect(book.shelfId, book.rowId);
+    if (book.shelfId) {
+      populateRowSelect(book.shelfId, book.rowId);
+      if (book.rowId) populateLayerSelect(book.rowId, book.layerId);
+    }
   }
 
   // Force manual tab visible, import button hidden, multi-add hidden
@@ -507,10 +539,12 @@ function resetBookForm() {
   populateCabinetSelect(null);
   populateShelfSelect(null, null);
   populateRowSelect(null, null);
+  populateLayerSelect(null, null);
 
   hideNewRow('newCabinetRow');
   hideNewRow('newShelfRow');
   hideNewRow('newRowRow');
+  hideNewRow('newLayerRow');
 }
 
 function resetExcelTab() {
@@ -549,7 +583,7 @@ function populateShelfSelect(cabinetId, selectedId) {
 
 function populateRowSelect(shelfId, selectedId) {
   const sel = document.getElementById('rowSelect');
-  sel.innerHTML = '<option value="">-- בחר שורה --</option>';
+  sel.innerHTML = '<option value="">-- בחר טור --</option>';
   sel.disabled  = !shelfId;
 
   if (shelfId) {
@@ -558,7 +592,22 @@ function populateRowSelect(shelfId, selectedId) {
       const opt = new Option(r.name, r.id, false, r.id === selectedId);
       sel.appendChild(opt);
     });
-    sel.appendChild(new Option('＋ הוסף שורה חדשה...', 'NEW'));
+    sel.appendChild(new Option('＋ הוסף טור חדש...', 'NEW'));
+  }
+}
+
+function populateLayerSelect(rowId, selectedId) {
+  const sel = document.getElementById('layerSelect');
+  sel.innerHTML = '<option value="">-- בחר שכבה --</option>';
+  sel.disabled  = !rowId;
+
+  if (rowId) {
+    const layers = db.locations.layers.filter(l => l.rowId === rowId);
+    layers.forEach(l => {
+      const opt = new Option(l.name, l.id, false, l.id === selectedId);
+      sel.appendChild(opt);
+    });
+    sel.appendChild(new Option('＋ הוסף שכבה חדשה...', 'NEW'));
   }
 }
 
@@ -589,6 +638,7 @@ async function saveBook() {
   const cabinetVal = document.getElementById('cabinetSelect').value;
   const shelfVal   = document.getElementById('shelfSelect').value;
   const rowVal     = document.getElementById('rowSelect').value;
+  const layerVal   = document.getElementById('layerSelect').value;
 
   const bookData = {
     name,
@@ -596,6 +646,7 @@ async function saveBook() {
     cabinetId: cabinetVal && cabinetVal !== 'NEW' ? parseInt(cabinetVal) : null,
     shelfId:   shelfVal   && shelfVal   !== 'NEW' ? parseInt(shelfVal)   : null,
     rowId:     rowVal     && rowVal     !== 'NEW' ? parseInt(rowVal)     : null,
+    layerId:   layerVal   && layerVal   !== 'NEW' ? parseInt(layerVal)   : null,
   };
 
   showLoadingOverlay(true);
@@ -635,6 +686,7 @@ async function saveBookAndContinue() {
   const cabinetVal = document.getElementById('cabinetSelect').value;
   const shelfVal   = document.getElementById('shelfSelect').value;
   const rowVal     = document.getElementById('rowSelect').value;
+  const layerVal   = document.getElementById('layerSelect').value;
 
   const bookData = {
     name,
@@ -642,6 +694,7 @@ async function saveBookAndContinue() {
     cabinetId: cabinetVal && cabinetVal !== 'NEW' ? parseInt(cabinetVal) : null,
     shelfId:   shelfVal   && shelfVal   !== 'NEW' ? parseInt(shelfVal)   : null,
     rowId:     rowVal     && rowVal     !== 'NEW' ? parseInt(rowVal)     : null,
+    layerId:   layerVal   && layerVal   !== 'NEW' ? parseInt(layerVal)   : null,
   };
 
   showLoadingOverlay(true);
@@ -655,6 +708,7 @@ async function saveBookAndContinue() {
     const savedCabinetId = bookData.cabinetId;
     const savedShelfId   = bookData.shelfId;
     const savedRowId     = bookData.rowId;
+    const savedLayerId   = bookData.layerId;
 
     document.getElementById('bookName').value   = '';
     document.getElementById('bookAuthor').value = '';
@@ -663,15 +717,23 @@ async function saveBookAndContinue() {
     hideNewRow('newCabinetRow');
     hideNewRow('newShelfRow');
     hideNewRow('newRowRow');
+    hideNewRow('newLayerRow');
 
     populateCabinetSelect(savedCabinetId);
     if (savedCabinetId) {
       populateShelfSelect(savedCabinetId, savedShelfId);
-      if (savedShelfId) populateRowSelect(savedShelfId, savedRowId);
-      else populateRowSelect(null, null);
+      if (savedShelfId) {
+        populateRowSelect(savedShelfId, savedRowId);
+        if (savedRowId) populateLayerSelect(savedRowId, savedLayerId);
+        else populateLayerSelect(null, null);
+      } else {
+        populateRowSelect(null, null);
+        populateLayerSelect(null, null);
+      }
     } else {
       populateShelfSelect(null, null);
       populateRowSelect(null, null);
+      populateLayerSelect(null, null);
     }
 
     document.getElementById('bookName').focus();
@@ -815,6 +877,37 @@ function renderLocationsManager() {
     if (savedRowShelf) rowShelfSel.value = savedRowShelf;
   }
 
+  // Populate selects in layers tab
+  const layerCabSel = document.getElementById('newLayerCabinet');
+  const savedLayerCab = layerCabSel.value;
+  layerCabSel.innerHTML = '<option value="">-- בחר ארון --</option>';
+  db.locations.cabinets.forEach(c => layerCabSel.appendChild(new Option(c.name, c.id)));
+  if (savedLayerCab) layerCabSel.value = savedLayerCab;
+
+  const layerShelfSel = document.getElementById('newLayerShelf');
+  const savedLayerShelf = layerShelfSel.value;
+  const filterCabForLayers = parseInt(layerCabSel.value) || null;
+  layerShelfSel.innerHTML = '<option value="">-- בחר מדף --</option>';
+  layerShelfSel.disabled = !filterCabForLayers;
+  if (filterCabForLayers) {
+    db.locations.shelves
+      .filter(s => s.cabinetId === filterCabForLayers)
+      .forEach(s => layerShelfSel.appendChild(new Option(s.name, s.id)));
+    if (savedLayerShelf) layerShelfSel.value = savedLayerShelf;
+  }
+
+  const layerRowSel = document.getElementById('newLayerRow');
+  const savedLayerRow = layerRowSel.value;
+  const filterShelfForLayers = parseInt(layerShelfSel.value) || null;
+  layerRowSel.innerHTML = '<option value="">-- בחר טור --</option>';
+  layerRowSel.disabled = !filterShelfForLayers;
+  if (filterShelfForLayers) {
+    db.locations.rows
+      .filter(r => r.shelfId === filterShelfForLayers)
+      .forEach(r => layerRowSel.appendChild(new Option(r.name, r.id)));
+    if (savedLayerRow) layerRowSel.value = savedLayerRow;
+  }
+
   // Cabinets list
   const cabList = document.getElementById('cabinetsList');
   if (db.locations.cabinets.length === 0) {
@@ -850,6 +943,9 @@ function renderLocationsManager() {
 
   // Rows list — filtered by selected shelf
   renderRowsList(parseInt(rowShelfSel.value) || null);
+
+  // Layers list — filtered by selected row
+  renderLayersList(parseInt(layerRowSel.value) || null);
 }
 
 function renderShelvesList(filterCabinetId) {
@@ -887,11 +983,11 @@ function renderRowsList(filterShelfId) {
     : [];
 
   if (!filterShelfId) {
-    rowsList.innerHTML = '<div style="color:var(--color-muted);padding:10px">בחר מדף להצגת השורות שלו</div>';
+    rowsList.innerHTML = '<div style="color:var(--color-muted);padding:10px">בחר מדף להצגת הטורים שלו</div>';
     return;
   }
   if (rows.length === 0) {
-    rowsList.innerHTML = '<div style="color:var(--color-muted);padding:10px">אין שורות במדף זה</div>';
+    rowsList.innerHTML = '<div style="color:var(--color-muted);padding:10px">אין טורים במדף זה</div>';
     return;
   }
   rowsList.innerHTML = rows.map(r => {
@@ -899,9 +995,36 @@ function renderRowsList(filterShelfId) {
     const cab   = shelf ? getCabinet(shelf.cabinetId) : null;
     const booksCount = db.books.filter(b => b.rowId === r.id).length;
     return `<div class="loc-item">
-      <div><div class="loc-item-name">• ${esc(r.name)}</div>
+      <div><div class="loc-item-name">· ${esc(r.name)}</div>
       <div class="loc-item-meta">${cab ? cab.name + ' / ' : ''}${shelf ? shelf.name : ''} · ${booksCount} ספרים</div></div>
       <button class="loc-item-delete" data-action="del-row" data-id="${r.id}">מחק</button>
+    </div>`;
+  }).join('');
+}
+
+function renderLayersList(filterRowId) {
+  const layersList = document.getElementById('layersList');
+  const layers = filterRowId
+    ? db.locations.layers.filter(l => l.rowId === filterRowId)
+    : [];
+
+  if (!filterRowId) {
+    layersList.innerHTML = '<div style="color:var(--color-muted);padding:10px">בחר טור להצגת השכבות שלו</div>';
+    return;
+  }
+  if (layers.length === 0) {
+    layersList.innerHTML = '<div style="color:var(--color-muted);padding:10px">אין שכבות בטור זה</div>';
+    return;
+  }
+  layersList.innerHTML = layers.map(l => {
+    const row   = getRow(l.rowId);
+    const shelf = row ? getShelf(row.shelfId) : null;
+    const cab   = shelf ? getCabinet(shelf.cabinetId) : null;
+    const booksCount = db.books.filter(b => b.layerId === l.id).length;
+    return `<div class="loc-item">
+      <div><div class="loc-item-name">‣ ${esc(l.name)}</div>
+      <div class="loc-item-meta">${cab ? cab.name + ' / ' : ''}${shelf ? shelf.name + ' / ' : ''}${row ? row.name : ''} · ${booksCount} ספרים</div></div>
+      <button class="loc-item-delete" data-action="del-layer" data-id="${l.id}">מחק</button>
     </div>`;
   }).join('');
 }
@@ -927,18 +1050,18 @@ let pendingImportBooks = [];
 function downloadTemplate() {
   const wb = XLSX.utils.book_new();
   const wsData = [
-    ['שם ספר', 'שם סופר', 'ארון', 'מדף', 'שורה'],
-    ['הארי פוטר ואבן החכמים', "ג'יי קיי רולינג",        'ארון 1', 'מדף 1', 'שורה 1'],
-    ['1984',                  "ג'ורג' אורוול",            'ארון 1', 'מדף 1', 'שורה 2'],
-    ['הנסיך הקטן',            'אנטואן דה סנט-אקזופרי',   'ארון 2', 'מדף 3', 'שורה 1'],
-    ['ספר לדוגמה',            'סופר לדוגמה',              'ארון 2', 'מדף 3', 'שורה 2'],
+    ['שם ספר', 'שם סופר', 'ארון', 'מדף', 'טור', 'שכבה'],
+    ['הארי פוטר ואבן החכמים', "ג'יי קיי רולינג",        'ארון 1', 'מדף 1', 'טור 1', 'שכבה א'],
+    ['1984',                  "ג'ורג' אורוול",            'ארון 1', 'מדף 1', 'טור 1', 'שכבה ב'],
+    ['הנסיך הקטן',            'אנטואן דה סנט-אקזופרי',   'ארון 2', 'מדף 3', 'טור 2', ''],
+    ['ספר לדוגמה',            'סופר לדוגמה',              'ארון 2', 'מדף 3', 'טור 2', ''],
   ];
 
   const ws = XLSX.utils.aoa_to_sheet(wsData);
-  ws['!cols'] = [{ wch: 32 }, { wch: 26 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+  ws['!cols'] = [{ wch: 32 }, { wch: 26 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
 
   // Bold header
-  ['A1','B1','C1','D1','E1'].forEach(cell => {
+  ['A1','B1','C1','D1','E1','F1'].forEach(cell => {
     if (!ws[cell]) return;
     ws[cell].s = {
       font: { bold: true, color: { rgb: 'FFFFFF' } },
@@ -973,7 +1096,7 @@ function parseImportRows(rows) {
 
   const HEADER_MAP = {
     'שם ספר': 'name', 'שם סופר': 'author',
-    'ארון': 'cabinet', 'מדף': 'shelf', 'שורה': 'row',
+    'ארון': 'cabinet', 'מדף': 'shelf', 'טור': 'row', 'שכבה': 'layer',
   };
 
   const headers = rows[0].map(h => String(h).trim());
@@ -1000,6 +1123,7 @@ function parseImportRows(rows) {
       cabinet: colIdx.cabinet !== undefined ? String(row[colIdx.cabinet] ?? '').trim() : '',
       shelf:   colIdx.shelf   !== undefined ? String(row[colIdx.shelf]   ?? '').trim() : '',
       row:     colIdx.row     !== undefined ? String(row[colIdx.row]     ?? '').trim() : '',
+      layer:   colIdx.layer   !== undefined ? String(row[colIdx.layer]   ?? '').trim() : '',
     });
   });
 
@@ -1014,6 +1138,7 @@ function showImportResult(books, errors) {
   const newCabNames  = new Set();
   const newShelfKeys = new Set();
   const newRowKeys   = new Set();
+  const newLayerKeys = new Set();
 
   books.forEach(b => {
     if (b.cabinet) {
@@ -1028,6 +1153,10 @@ function showImportResult(books, errors) {
         if (b.row) {
           const existRow = db.locations.rows.find(r => r.name === b.row);
           if (!existRow) newRowKeys.add(`${b.cabinet}/${b.shelf}/${b.row}`);
+          if (b.layer) {
+            const existLayer = db.locations.layers.find(l => l.name === b.layer);
+            if (!existLayer) newLayerKeys.add(`${b.cabinet}/${b.shelf}/${b.row}/${b.layer}`);
+          }
         }
       }
     }
@@ -1037,7 +1166,8 @@ function showImportResult(books, errors) {
   const parts = [`<strong>${books.length}</strong> ספרים`];
   if (newCabNames.size)  parts.push(`<span class="import-new-badge">חדש</span>${newCabNames.size} ארונות`);
   if (newShelfKeys.size) parts.push(`<span class="import-new-badge">חדש</span>${newShelfKeys.size} מדפים`);
-  if (newRowKeys.size)   parts.push(`<span class="import-new-badge">חדש</span>${newRowKeys.size} שורות`);
+  if (newRowKeys.size)   parts.push(`<span class="import-new-badge">חדש</span>${newRowKeys.size} טורים`);
+  if (newLayerKeys.size) parts.push(`<span class="import-new-badge">חדש</span>${newLayerKeys.size} שכבות`);
 
   document.getElementById('importSummary').innerHTML =
     `<div class="import-summary-box">📊 נמצאו: ${parts.join(' &nbsp;·&nbsp; ')}</div>`;
@@ -1055,12 +1185,12 @@ function showImportResult(books, errors) {
   // Preview table
   const preview  = books.slice(0, 15);
   const moreRows = books.length > 15
-    ? `<tr><td colspan="6" style="text-align:center;color:var(--color-muted);padding:10px">...ועוד ${books.length - 15} ספרים</td></tr>`
+    ? `<tr><td colspan="7" style="text-align:center;color:var(--color-muted);padding:10px">...ועוד ${books.length - 15} ספרים</td></tr>`
     : '';
 
   document.getElementById('importPreviewTable').innerHTML = `
     <table class="import-table">
-      <thead><tr><th>#</th><th>שם ספר</th><th>שם סופר</th><th>ארון</th><th>מדף</th><th>שורה</th></tr></thead>
+      <thead><tr><th>#</th><th>שם ספר</th><th>שם סופר</th><th>ארון</th><th>מדף</th><th>טור</th><th>שכבה</th></tr></thead>
       <tbody>
         ${preview.map((b, i) => `<tr>
           <td style="color:var(--color-muted)">${i + 1}</td>
@@ -1069,6 +1199,7 @@ function showImportResult(books, errors) {
           <td>${esc(b.cabinet)}</td>
           <td>${esc(b.shelf)}</td>
           <td>${esc(b.row)}</td>
+          <td>${esc(b.layer)}</td>
         </tr>`).join('')}
         ${moreRows}
       </tbody>
@@ -1089,6 +1220,7 @@ async function confirmImport() {
     const result = await apiFetch('POST', '/api/books/bulk', { books: pendingImportBooks });
     db.books.push(...result.books);
     db.locations = result.locations;
+    if (!db.locations.layers) db.locations.layers = [];
     pendingImportBooks = [];
     closeModal('bookModal');
     render();
@@ -1147,7 +1279,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Clear filter
   document.getElementById('clearFilterBtn').addEventListener('click', () => {
-    state.filter = { cabinetId: null, shelfId: null, rowId: null, owner: null };
+    state.filter = { cabinetId: null, shelfId: null, rowId: null, layerId: null, owner: null };
     render();
   });
 
@@ -1160,35 +1292,45 @@ document.addEventListener('DOMContentLoaded', () => {
     if (action === 'filter-owner') {
       const owner = el.dataset.owner;
       if (state.filter.owner === owner) {
-        state.filter = { cabinetId: null, shelfId: null, rowId: null, owner: null };
+        state.filter = { cabinetId: null, shelfId: null, rowId: null, layerId: null, owner: null };
       } else {
-        state.filter = { cabinetId: null, shelfId: null, rowId: null, owner };
+        state.filter = { cabinetId: null, shelfId: null, rowId: null, layerId: null, owner };
       }
     } else if (action === 'filter-all') {
-      state.filter = { cabinetId: null, shelfId: null, rowId: null, owner: null };
+      state.filter = { cabinetId: null, shelfId: null, rowId: null, layerId: null, owner: null };
     } else if (action === 'filter-cabinet') {
       const id = parseInt(el.dataset.id);
       if (state.filter.cabinetId === id && !state.filter.shelfId) {
-        state.filter = { cabinetId: null, shelfId: null, rowId: null, owner: null };
+        state.filter = { cabinetId: null, shelfId: null, rowId: null, layerId: null, owner: null };
       } else {
-        state.filter = { cabinetId: id, shelfId: null, rowId: null, owner: null };
+        state.filter = { cabinetId: id, shelfId: null, rowId: null, layerId: null, owner: null };
       }
     } else if (action === 'filter-shelf') {
       const shelfId   = parseInt(el.dataset.id);
       const cabinetId = parseInt(el.dataset.cabinet);
       if (state.filter.shelfId === shelfId && !state.filter.rowId) {
-        state.filter = { cabinetId, shelfId: null, rowId: null, owner: null };
+        state.filter = { cabinetId, shelfId: null, rowId: null, layerId: null, owner: null };
       } else {
-        state.filter = { cabinetId, shelfId, rowId: null, owner: null };
+        state.filter = { cabinetId, shelfId, rowId: null, layerId: null, owner: null };
       }
     } else if (action === 'filter-row') {
       const rowId     = parseInt(el.dataset.id);
       const shelfId   = parseInt(el.dataset.shelf);
       const cabinetId = parseInt(el.dataset.cabinet);
-      if (state.filter.rowId === rowId) {
-        state.filter = { cabinetId, shelfId, rowId: null, owner: null };
+      if (state.filter.rowId === rowId && !state.filter.layerId) {
+        state.filter = { cabinetId, shelfId, rowId: null, layerId: null, owner: null };
       } else {
-        state.filter = { cabinetId, shelfId, rowId, owner: null };
+        state.filter = { cabinetId, shelfId, rowId, layerId: null, owner: null };
+      }
+    } else if (action === 'filter-layer') {
+      const layerId   = parseInt(el.dataset.id);
+      const rowId     = parseInt(el.dataset.row);
+      const shelfId   = parseInt(el.dataset.shelf);
+      const cabinetId = parseInt(el.dataset.cabinet);
+      if (state.filter.layerId === layerId) {
+        state.filter = { cabinetId, shelfId, rowId, layerId: null, owner: null };
+      } else {
+        state.filter = { cabinetId, shelfId, rowId, layerId, owner: null };
       }
     }
     render();
@@ -1219,6 +1361,7 @@ document.addEventListener('DOMContentLoaded', () => {
       hideNewRow('newCabinetRow');
       populateShelfSelect(val ? parseInt(val) : null, null);
       populateRowSelect(null, null);
+      populateLayerSelect(null, null);
     }
   });
 
@@ -1235,6 +1378,7 @@ document.addEventListener('DOMContentLoaded', () => {
       populateCabinetSelect(newCab.id);
       populateShelfSelect(newCab.id, null);
       populateRowSelect(null, null);
+      populateLayerSelect(null, null);
       showToast(`ארון "${name}" נוסף ✓`, 'success');
       render();
     } catch (e) {
@@ -1252,13 +1396,13 @@ document.addEventListener('DOMContentLoaded', () => {
   // Shelf select change
   document.getElementById('shelfSelect').addEventListener('change', e => {
     const val = e.target.value;
-    const cabinetId = parseInt(document.getElementById('cabinetSelect').value);
     if (val === 'NEW') {
       showNewRow('newShelfRow');
       e.target.value = '';
     } else {
       hideNewRow('newShelfRow');
       populateRowSelect(val ? parseInt(val) : null, null);
+      populateLayerSelect(null, null);
     }
   });
 
@@ -1276,6 +1420,7 @@ document.addEventListener('DOMContentLoaded', () => {
       hideNewRow('newShelfRow');
       populateShelfSelect(cabinetId, newShelf.id);
       populateRowSelect(newShelf.id, null);
+      populateLayerSelect(null, null);
       showToast(`מדף "${name}" נוסף ✓`, 'success');
       render();
     } catch (e) {
@@ -1290,7 +1435,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('shelfSelect').value = '';
   });
 
-  // Row select change
+  // Row (טור) select change
   document.getElementById('rowSelect').addEventListener('change', e => {
     const val = e.target.value;
     if (val === 'NEW') {
@@ -1298,23 +1443,25 @@ document.addEventListener('DOMContentLoaded', () => {
       e.target.value = '';
     } else {
       hideNewRow('newRowRow');
+      populateLayerSelect(val ? parseInt(val) : null, null);
     }
   });
 
-  // Confirm / Cancel new row
+  // Confirm / Cancel new row (טור)
   document.getElementById('confirmNewRow').addEventListener('click', async () => {
     const name = document.getElementById('newRowName').value.trim();
     const shelfId = parseInt(document.getElementById('shelfSelect').value);
-    if (!name) { showToast('הכנס שם לשורה', 'error'); return; }
+    if (!name) { showToast('הכנס שם לטור', 'error'); return; }
     if (!shelfId) { showToast('בחר מדף תחילה', 'error'); return; }
     showLoadingOverlay(true);
     try {
-      const result = await apiFetch('POST', '/api/locations', { type: 'שורה', name, parentId: shelfId });
+      const result = await apiFetch('POST', '/api/locations', { type: 'טור', name, parentId: shelfId });
       const newRow = { id: result.id, shelfId, name: result.name };
       db.locations.rows.push(newRow);
       hideNewRow('newRowRow');
       populateRowSelect(shelfId, newRow.id);
-      showToast(`שורה "${name}" נוספה ✓`, 'success');
+      populateLayerSelect(newRow.id, null);
+      showToast(`טור "${name}" נוסף ✓`, 'success');
       render();
     } catch (e) {
       showToast('שגיאה: ' + e.message, 'error');
@@ -1326,6 +1473,44 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('cancelNewRow').addEventListener('click', () => {
     hideNewRow('newRowRow');
     document.getElementById('rowSelect').value = '';
+  });
+
+  // Layer (שכבה) select change
+  document.getElementById('layerSelect').addEventListener('change', e => {
+    const val = e.target.value;
+    if (val === 'NEW') {
+      showNewRow('newLayerRow');
+      e.target.value = '';
+    } else {
+      hideNewRow('newLayerRow');
+    }
+  });
+
+  // Confirm / Cancel new layer (שכבה)
+  document.getElementById('confirmNewLayer').addEventListener('click', async () => {
+    const name  = document.getElementById('newLayerName').value.trim();
+    const rowId = parseInt(document.getElementById('rowSelect').value);
+    if (!name)  { showToast('הכנס שם לשכבה', 'error'); return; }
+    if (!rowId) { showToast('בחר טור תחילה', 'error'); return; }
+    showLoadingOverlay(true);
+    try {
+      const result = await apiFetch('POST', '/api/locations', { type: 'שכבה', name, parentId: rowId });
+      const newLayer = { id: result.id, rowId, name: result.name };
+      db.locations.layers.push(newLayer);
+      hideNewRow('newLayerRow');
+      populateLayerSelect(rowId, newLayer.id);
+      showToast(`שכבה "${name}" נוספה ✓`, 'success');
+      render();
+    } catch (e) {
+      showToast('שגיאה: ' + e.message, 'error');
+    } finally {
+      showLoadingOverlay(false);
+    }
+  });
+
+  document.getElementById('cancelNewLayer').addEventListener('click', () => {
+    hideNewRow('newLayerRow');
+    document.getElementById('layerSelect').value = '';
   });
 
   // ---- Delete Modal ----
@@ -1373,6 +1558,41 @@ document.addEventListener('DOMContentLoaded', () => {
     renderRowsList(shelfId);
   });
 
+  // Layer tab cascades in manager
+  document.getElementById('newLayerCabinet').addEventListener('change', () => {
+    const cabinetId = parseInt(document.getElementById('newLayerCabinet').value) || null;
+    const layerShelfSel = document.getElementById('newLayerShelf');
+    layerShelfSel.innerHTML = '<option value="">-- בחר מדף --</option>';
+    layerShelfSel.disabled = !cabinetId;
+    if (cabinetId) {
+      db.locations.shelves
+        .filter(s => s.cabinetId === cabinetId)
+        .forEach(s => layerShelfSel.appendChild(new Option(s.name, s.id)));
+    }
+    const layerRowSel = document.getElementById('newLayerRow');
+    layerRowSel.innerHTML = '<option value="">-- בחר טור --</option>';
+    layerRowSel.disabled = true;
+    renderLayersList(null);
+  });
+
+  document.getElementById('newLayerShelf').addEventListener('change', () => {
+    const shelfId = parseInt(document.getElementById('newLayerShelf').value) || null;
+    const layerRowSel = document.getElementById('newLayerRow');
+    layerRowSel.innerHTML = '<option value="">-- בחר טור --</option>';
+    layerRowSel.disabled = !shelfId;
+    if (shelfId) {
+      db.locations.rows
+        .filter(r => r.shelfId === shelfId)
+        .forEach(r => layerRowSel.appendChild(new Option(r.name, r.id)));
+    }
+    renderLayersList(null);
+  });
+
+  document.getElementById('newLayerRow').addEventListener('change', () => {
+    const rowId = parseInt(document.getElementById('newLayerRow').value) || null;
+    renderLayersList(rowId);
+  });
+
   // Add cabinet from manager
   document.getElementById('addCabinetBtn').addEventListener('click', async () => {
     const name  = document.getElementById('newCabinetNameMgr').value.trim();
@@ -1415,20 +1635,41 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Add row from manager
+  // Add row (טור) from manager
   document.getElementById('addRowBtn').addEventListener('click', async () => {
     const name    = document.getElementById('newRowNameMgr').value.trim();
     const shelfId = parseInt(document.getElementById('newRowShelf').value);
-    if (!name)    { showToast('הכנס שם לשורה', 'error');   return; }
+    if (!name)    { showToast('הכנס שם לטור', 'error');    return; }
     if (!shelfId) { showToast('בחר מדף תחילה', 'error');   return; }
     showLoadingOverlay(true);
     try {
-      const result = await apiFetch('POST', '/api/locations', { type: 'שורה', name, parentId: shelfId });
+      const result = await apiFetch('POST', '/api/locations', { type: 'טור', name, parentId: shelfId });
       db.locations.rows.push({ id: result.id, shelfId, name: result.name });
       document.getElementById('newRowNameMgr').value = '';
       renderLocationsManager();
       render();
-      showToast(`שורה "${name}" נוספה ✓`, 'success');
+      showToast(`טור "${name}" נוסף ✓`, 'success');
+    } catch (e) {
+      showToast('שגיאה: ' + e.message, 'error');
+    } finally {
+      showLoadingOverlay(false);
+    }
+  });
+
+  // Add layer (שכבה) from manager
+  document.getElementById('addLayerBtn').addEventListener('click', async () => {
+    const name  = document.getElementById('newLayerNameMgr').value.trim();
+    const rowId = parseInt(document.getElementById('newLayerRow').value);
+    if (!name)  { showToast('הכנס שם לשכבה', 'error'); return; }
+    if (!rowId) { showToast('בחר טור תחילה', 'error');  return; }
+    showLoadingOverlay(true);
+    try {
+      const result = await apiFetch('POST', '/api/locations', { type: 'שכבה', name, parentId: rowId });
+      db.locations.layers.push({ id: result.id, rowId, name: result.name });
+      document.getElementById('newLayerNameMgr').value = '';
+      renderLocationsManager();
+      render();
+      showToast(`שכבה "${name}" נוספה ✓`, 'success');
     } catch (e) {
       showToast('שגיאה: ' + e.message, 'error');
     } finally {
@@ -1441,7 +1682,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target.tagName !== 'INPUT') return;
     const row = e.target.closest('.loc-owner-edit-row');
     if (!row) return;
-    const id = row.id.replace('ownerEditRow_', '');
     if (e.key === 'Enter') {
       row.querySelector('[data-action="save-owner"]').click();
     } else if (e.key === 'Escape') {
@@ -1506,7 +1746,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  ['shelvesList', 'rowsList'].forEach(listId => {
+  ['shelvesList', 'rowsList', 'layersList'].forEach(listId => {
     document.getElementById(listId).addEventListener('click', async e => {
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
@@ -1520,10 +1760,14 @@ document.addEventListener('DOMContentLoaded', () => {
       if (btn.dataset.action === 'del-shelf') {
         const usedByRow  = db.locations.rows.some(r => r.shelfId === id);
         const usedByBook = db.books.some(b => b.shelfId === id);
-        if (usedByRow || usedByBook) { showToast('לא ניתן למחוק - יש שורות או ספרים במדף זה', 'error'); return; }
+        if (usedByRow || usedByBook) { showToast('לא ניתן למחוק - יש טורים או ספרים במדף זה', 'error'); return; }
       } else if (btn.dataset.action === 'del-row') {
-        const usedByBook = db.books.some(b => b.rowId === id);
-        if (usedByBook) { showToast('לא ניתן למחוק - יש ספרים בשורה זו', 'error'); return; }
+        const usedByLayer = db.locations.layers.some(l => l.rowId === id);
+        const usedByBook  = db.books.some(b => b.rowId === id);
+        if (usedByLayer || usedByBook) { showToast('לא ניתן למחוק - יש שכבות או ספרים בטור זה', 'error'); return; }
+      } else if (btn.dataset.action === 'del-layer') {
+        const usedByBook = db.books.some(b => b.layerId === id);
+        if (usedByBook) { showToast('לא ניתן למחוק - יש ספרים בשכבה זו', 'error'); return; }
       }
 
       showLoadingOverlay(true);
@@ -1533,6 +1777,8 @@ document.addEventListener('DOMContentLoaded', () => {
           db.locations.shelves = db.locations.shelves.filter(s => s.id !== id);
         } else if (btn.dataset.action === 'del-row') {
           db.locations.rows = db.locations.rows.filter(r => r.id !== id);
+        } else if (btn.dataset.action === 'del-layer') {
+          db.locations.layers = db.locations.layers.filter(l => l.id !== id);
         }
         renderLocationsManager();
         render();
@@ -1592,7 +1838,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Enter key in new location inputs
   [['newCabinetName', 'confirmNewCabinet'],
    ['newShelfName',   'confirmNewShelf'],
-   ['newRowName',     'confirmNewRow']].forEach(([inputId, btnId]) => {
+   ['newRowName',     'confirmNewRow'],
+   ['newLayerName',   'confirmNewLayer']].forEach(([inputId, btnId]) => {
     document.getElementById(inputId).addEventListener('keydown', e => {
       if (e.key === 'Enter')  document.getElementById(btnId).click();
       if (e.key === 'Escape') document.getElementById('cancel' + btnId.replace('confirm', '')).click();

@@ -53,7 +53,7 @@
           <div class="sort-option" data-sort="author-asc">שם סופר (א&thinsp;→&thinsp;ת)</div>
           <div class="sort-option" data-sort="author-desc">שם סופר (ת&thinsp;→&thinsp;א)</div>
           <div class="sort-divider"></div>
-          <div class="sort-option" data-sort="location">מיקום (ארון ← מדף ← שורה)</div>
+          <div class="sort-option" data-sort="location">מיקום (ארון ← מדף ← טור ← שכבה)</div>
         </div>
       </div>
       <div class="stats-sep"></div>
@@ -134,7 +134,7 @@
       <span class="mgmt-card-icon">🗂️</span>
       <div class="mgmt-card-body">
         <div class="mgmt-card-title">ניהול מיקומים</div>
-        <div class="mgmt-card-desc">ארונות, מדפים ושורות</div>
+        <div class="mgmt-card-desc">ארונות, מדפים, טורים ושכבות</div>
       </div>
       <span class="mgmt-card-arrow">›</span>
     </button>
@@ -208,12 +208,21 @@
                 </div>
               </div>
               <div class="form-group">
-                <label for="rowSelect">שורה</label>
-                <select id="rowSelect" disabled><option value="">-- בחר שורה --</option></select>
+                <label for="rowSelect">טור</label>
+                <select id="rowSelect" disabled><option value="">-- בחר טור --</option></select>
                 <div class="new-item-row" id="newRowRow">
-                  <input type="text" id="newRowName" placeholder="שם השורה החדשה">
+                  <input type="text" id="newRowName" placeholder="שם הטור החדש">
                   <button type="button" class="btn-confirm" id="confirmNewRow" title="אשר">✓</button>
                   <button type="button" class="btn-cancel-sm" id="cancelNewRow" title="בטל">✕</button>
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="layerSelect">שכבה</label>
+                <select id="layerSelect" disabled><option value="">-- בחר שכבה --</option></select>
+                <div class="new-item-row" id="newLayerRow">
+                  <input type="text" id="newLayerName" placeholder="שם השכבה החדשה">
+                  <button type="button" class="btn-confirm" id="confirmNewLayer" title="אשר">✓</button>
+                  <button type="button" class="btn-cancel-sm" id="cancelNewLayer" title="בטל">✕</button>
                 </div>
               </div>
             </div>
@@ -287,7 +296,8 @@
         <div class="loc-tabs">
           <button class="loc-tab active" data-tab="cabinets">ארונות</button>
           <button class="loc-tab" data-tab="shelves">מדפים</button>
-          <button class="loc-tab" data-tab="rows">שורות</button>
+          <button class="loc-tab" data-tab="rows">טורים</button>
+          <button class="loc-tab" data-tab="layers">שכבות</button>
         </div>
 
         <!-- Cabinets -->
@@ -312,7 +322,7 @@
           <div class="loc-list" id="shelvesList"></div>
         </div>
 
-        <!-- Rows -->
+        <!-- Rows (טורים) -->
         <div class="loc-panel" id="panelRows">
           <div class="loc-add-form">
             <select id="newRowCabinet">
@@ -321,10 +331,28 @@
             <select id="newRowShelf" disabled>
               <option value="">-- בחר מדף --</option>
             </select>
-            <input type="text" id="newRowNameMgr" placeholder="שם השורה החדשה">
+            <input type="text" id="newRowNameMgr" placeholder="שם הטור החדש">
             <button class="btn-primary" id="addRowBtn">＋ הוסף</button>
           </div>
           <div class="loc-list" id="rowsList"></div>
+        </div>
+
+        <!-- Layers (שכבות) -->
+        <div class="loc-panel" id="panelLayers">
+          <div class="loc-add-form">
+            <select id="newLayerCabinet">
+              <option value="">-- בחר ארון --</option>
+            </select>
+            <select id="newLayerShelf" disabled>
+              <option value="">-- בחר מדף --</option>
+            </select>
+            <select id="newLayerRow" disabled>
+              <option value="">-- בחר טור --</option>
+            </select>
+            <input type="text" id="newLayerNameMgr" placeholder="שם השכבה החדשה">
+            <button class="btn-primary" id="addLayerBtn">＋ הוסף</button>
+          </div>
+          <div class="loc-list" id="layersList"></div>
         </div>
 
       </div>

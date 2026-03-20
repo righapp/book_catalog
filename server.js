@@ -110,12 +110,13 @@ function parseBooks(rows) {
       cabinetId: parseInt(r[3]) || null,
       shelfId:   parseInt(r[4]) || null,
       rowId:     parseInt(r[5]) || null,
+      layerId:   parseInt(r[6]) || null,
     }))
     .filter(b => b.id && b.name);
 }
 
 function parseLocations(rows) {
-  const out = { cabinets: [], shelves: [], rows: [] };
+  const out = { cabinets: [], shelves: [], rows: [], layers: [] };
   if (rows.length <= 1) return out;
   rows.slice(1).forEach(r => {
     const type = r[0], id = parseInt(r[1]), name = r[2], pid = parseInt(r[3]) || null;
@@ -124,7 +125,8 @@ function parseLocations(rows) {
     if (!id || !name) return;
     if (type === 'ארון')  out.cabinets.push({ id, name, owner: extra });
     if (type === 'מדף')   out.shelves.push({ id, cabinetId: pid, name, image });
-    if (type === 'שורה')  out.rows.push({ id, shelfId: pid, name });
+    if (type === 'טור')   out.rows.push({ id, shelfId: pid, name });
+    if (type === 'שכבה')  out.layers.push({ id, rowId: pid, name });
   });
   return out;
 }
@@ -156,7 +158,7 @@ async function ensureSheets() {
   // Add headers if sheets are empty
   const booksRows = await sheetGet(BOOKS_SHEET);
   if (!booksRows.length) {
-    await sheetAppend(BOOKS_SHEET, [['id', 'שם ספר', 'שם סופר', 'ארון_id', 'מדף_id', 'שורה_id']]);
+    await sheetAppend(BOOKS_SHEET, [['id', 'שם ספר', 'שם סופר', 'ארון_id', 'מדף_id', 'טור_id', 'שכבה_id']]);
   }
   const locRows = await sheetGet(LOC_SHEET);
   if (!locRows.length) {
@@ -179,11 +181,11 @@ app.get('/api/data', async (req, res) => {
 // POST /api/books  – add one book
 app.post('/api/books', async (req, res) => {
   try {
-    const { name, author, cabinetId, shelfId, rowId } = req.body;
+    const { name, author, cabinetId, shelfId, rowId, layerId } = req.body;
     const rows   = await sheetGet(BOOKS_SHEET);
     const nextId = maxId(parseBooks(rows)) + 1;
-    await sheetAppend(BOOKS_SHEET, [[nextId, name, author, cabinetId ?? '', shelfId ?? '', rowId ?? '']]);
-    res.json({ id: nextId, name, author, cabinetId, shelfId, rowId });
+    await sheetAppend(BOOKS_SHEET, [[nextId, name, author, cabinetId ?? '', shelfId ?? '', rowId ?? '', layerId ?? '']]);
+    res.json({ id: nextId, name, author, cabinetId, shelfId, rowId, layerId });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -194,8 +196,8 @@ app.put('/api/books/:id', async (req, res) => {
     const rows     = await sheetGet(BOOKS_SHEET);
     const idx      = rows.findIndex((r, i) => i > 0 && parseInt(r[0]) === targetId);
     if (idx === -1) return res.status(404).json({ error: 'לא נמצא' });
-    const { name, author, cabinetId, shelfId, rowId } = req.body;
-    await sheetUpdate(BOOKS_SHEET, idx + 1, [targetId, name, author, cabinetId ?? '', shelfId ?? '', rowId ?? '']);
+    const { name, author, cabinetId, shelfId, rowId, layerId } = req.body;
+    await sheetUpdate(BOOKS_SHEET, idx + 1, [targetId, name, author, cabinetId ?? '', shelfId ?? '', rowId ?? '', layerId ?? '']);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -218,8 +220,8 @@ app.post('/api/books/bulk', async (req, res) => {
     const incoming = req.body.books || [];
     const [booksRows, locRows] = await Promise.all([sheetGet(BOOKS_SHEET), sheetGet(LOC_SHEET)]);
 
-    let locs     = parseLocations(locRows);
-    let nextLocId  = maxId([...locs.cabinets, ...locs.shelves, ...locs.rows]) + 1;
+    let locs      = parseLocations(locRows);
+    let nextLocId  = maxId([...locs.cabinets, ...locs.shelves, ...locs.rows, ...locs.layers]) + 1;
     let nextBookId = maxId(parseBooks(booksRows)) + 1;
 
     const newBookRows = [];
@@ -250,14 +252,26 @@ app.post('/api/books/bulk', async (req, res) => {
         if (!row) {
           row = { id: nextLocId++, shelfId: shelf.id, name: b.row };
           locs.rows.push(row);
-          newLocRows.push(['שורה', row.id, row.name, shelf.id]);
+          newLocRows.push(['טור', row.id, row.name, shelf.id]);
+        }
+      }
+
+      let layer = null;
+      if (b.layer && row) {
+        layer = locs.layers.find(l => l.name === b.layer && l.rowId === row.id) || null;
+        if (!layer) {
+          layer = { id: nextLocId++, rowId: row.id, name: b.layer };
+          locs.layers.push(layer);
+          newLocRows.push(['שכבה', layer.id, layer.name, row.id]);
         }
       }
 
       const book = { id: nextBookId++, name: b.name, author: b.author,
-        cabinetId: cabinet?.id ?? null, shelfId: shelf?.id ?? null, rowId: row?.id ?? null };
+        cabinetId: cabinet?.id ?? null, shelfId: shelf?.id ?? null,
+        rowId: row?.id ?? null, layerId: layer?.id ?? null };
       newBooks.push(book);
-      newBookRows.push([book.id, book.name, book.author, book.cabinetId ?? '', book.shelfId ?? '', book.rowId ?? '']);
+      newBookRows.push([book.id, book.name, book.author,
+        book.cabinetId ?? '', book.shelfId ?? '', book.rowId ?? '', book.layerId ?? '']);
     }
 
     if (newLocRows.length)  await sheetAppend(LOC_SHEET,   newLocRows);
@@ -267,13 +281,13 @@ app.post('/api/books/bulk', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/locations  – add one location (cabinet / shelf / row)
+// POST /api/locations  – add one location (cabinet / shelf / טור / שכבה)
 app.post('/api/locations', async (req, res) => {
   try {
-    const { type, name, parentId, owner } = req.body; // type: 'ארון'|'מדף'|'שורה'
+    const { type, name, parentId, owner } = req.body; // type: 'ארון'|'מדף'|'טור'|'שכבה'
     const rows   = await sheetGet(LOC_SHEET);
     const locs   = parseLocations(rows);
-    const nextId = maxId([...locs.cabinets, ...locs.shelves, ...locs.rows]) + 1;
+    const nextId = maxId([...locs.cabinets, ...locs.shelves, ...locs.rows, ...locs.layers]) + 1;
     const extra  = (type === 'ארון' && owner) ? owner : '';
     await sheetAppend(LOC_SHEET, [[type, nextId, name, parentId ?? '', extra]]);
     res.json({ id: nextId, name, parentId, owner: extra });
