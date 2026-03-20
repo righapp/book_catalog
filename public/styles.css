@@ -1339,6 +1339,30 @@ button, select, input[type="text"] { touch-action: manipulation; }
   margin-top: 2px;
 }
 
+.loc-name-edit-row {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.loc-name-edit-row.visible { display: flex; }
+.loc-name-edit-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1.5px solid var(--color-accent);
+  border-radius: var(--r-sm);
+  font-size: 1rem;
+  outline: none;
+  min-height: 44px;
+  background: var(--bg-surface);
+  color: var(--color-text);
+  -webkit-appearance: none;
+}
+.loc-name-edit-row input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(107,63,38,.1);
+}
 .loc-owner-edit-row {
   display: none;
   align-items: center;

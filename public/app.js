@@ -931,9 +931,15 @@ function renderLocationsManager() {
             <div class="loc-item-meta">${booksCount} ספרים</div>
           </div>
           <div class="loc-item-cab-btns">
+            <button class="loc-item-rename" data-action="rename" data-id="${c.id}">✏️ שנה שם</button>
             <button class="loc-item-edit-owner" data-action="edit-owner" data-id="${c.id}">${editBtnLabel}</button>
             <button class="loc-item-delete" data-action="del-cabinet" data-id="${c.id}">מחק</button>
           </div>
+        </div>
+        <div class="loc-name-edit-row" id="nameEditRow_${c.id}">
+          <input type="text" placeholder="שם חדש..." value="${esc(c.name)}">
+          <button class="btn-confirm" data-action="save-name" data-id="${c.id}" data-type="cabinet" title="שמור">✓</button>
+          <button class="btn-cancel-sm" data-action="cancel-name" data-id="${c.id}" title="בטל">✕</button>
         </div>
         <div class="loc-owner-edit-row" id="ownerEditRow_${c.id}">
           <input type="text" placeholder="הכנס שם בעלים..." value="${esc(c.owner || '')}">
@@ -971,12 +977,18 @@ function renderShelvesList(filterCabinetId) {
   shelvesList.innerHTML = shelves.map(s => {
     const cab = getCabinet(s.cabinetId);
     const booksCount = db.books.filter(b => b.shelfId === s.id).length;
-    return `<div class="loc-item">
+    return `<div class="loc-item" style="flex-wrap:wrap">
       <div><div class="loc-item-name">📋 ${esc(s.name)}</div>
       <div class="loc-item-meta">${cab ? cab.name : ''} · ${booksCount} ספרים</div></div>
       <div style="display:flex;gap:6px;align-items:center">
+        <button class="loc-item-rename" data-action="rename" data-id="${s.id}" data-type="shelf" title="שנה שם">✏️</button>
         <button class="loc-item-img-btn${s.image ? ' has-image' : ''}" data-action="shelf-img" data-id="${s.id}" title="${s.image ? 'החלף תמונה' : 'הוסף תמונה'}">📷</button>
         <button class="loc-item-delete" data-action="del-shelf" data-id="${s.id}">מחק</button>
+      </div>
+      <div class="loc-name-edit-row" id="nameEditRow_${s.id}">
+        <input type="text" value="${esc(s.name)}">
+        <button class="btn-confirm" data-action="save-name" data-id="${s.id}" data-type="shelf" title="שמור">✓</button>
+        <button class="btn-cancel-sm" data-action="cancel-name" data-id="${s.id}" title="בטל">✕</button>
       </div>
     </div>`;
   }).join('');
@@ -1000,10 +1012,18 @@ function renderRowsList(filterShelfId) {
     const shelf = getShelf(r.shelfId);
     const cab   = shelf ? getCabinet(shelf.cabinetId) : null;
     const booksCount = db.books.filter(b => b.rowId === r.id).length;
-    return `<div class="loc-item">
+    return `<div class="loc-item" style="flex-wrap:wrap">
       <div><div class="loc-item-name">· ${esc(r.name)}</div>
       <div class="loc-item-meta">${cab ? cab.name + ' / ' : ''}${shelf ? shelf.name : ''} · ${booksCount} ספרים</div></div>
-      <button class="loc-item-delete" data-action="del-row" data-id="${r.id}">מחק</button>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="loc-item-rename" data-action="rename" data-id="${r.id}" data-type="row" title="שנה שם">✏️</button>
+        <button class="loc-item-delete" data-action="del-row" data-id="${r.id}">מחק</button>
+      </div>
+      <div class="loc-name-edit-row" id="nameEditRow_${r.id}">
+        <input type="text" value="${esc(r.name)}">
+        <button class="btn-confirm" data-action="save-name" data-id="${r.id}" data-type="row" title="שמור">✓</button>
+        <button class="btn-cancel-sm" data-action="cancel-name" data-id="${r.id}" title="בטל">✕</button>
+      </div>
     </div>`;
   }).join('');
 }
@@ -1027,10 +1047,18 @@ function renderLayersList(filterRowId) {
     const shelf = row ? getShelf(row.shelfId) : null;
     const cab   = shelf ? getCabinet(shelf.cabinetId) : null;
     const booksCount = db.books.filter(b => b.layerId === l.id).length;
-    return `<div class="loc-item">
+    return `<div class="loc-item" style="flex-wrap:wrap">
       <div><div class="loc-item-name">‣ ${esc(l.name)}</div>
       <div class="loc-item-meta">${cab ? cab.name + ' / ' : ''}${shelf ? shelf.name + ' / ' : ''}${row ? row.name : ''} · ${booksCount} ספרים</div></div>
-      <button class="loc-item-delete" data-action="del-layer" data-id="${l.id}">מחק</button>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="loc-item-rename" data-action="rename" data-id="${l.id}" data-type="layer" title="שנה שם">✏️</button>
+        <button class="loc-item-delete" data-action="del-layer" data-id="${l.id}">מחק</button>
+      </div>
+      <div class="loc-name-edit-row" id="nameEditRow_${l.id}">
+        <input type="text" value="${esc(l.name)}">
+        <button class="btn-confirm" data-action="save-name" data-id="${l.id}" data-type="layer" title="שמור">✓</button>
+        <button class="btn-cancel-sm" data-action="cancel-name" data-id="${l.id}" title="בטל">✕</button>
+      </div>
     </div>`;
   }).join('');
 }
@@ -1683,15 +1711,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Enter/Escape key in owner edit inputs
+  // Enter/Escape key in name/owner edit inputs
   document.getElementById('cabinetsList').addEventListener('keydown', e => {
     if (e.target.tagName !== 'INPUT') return;
-    const row = e.target.closest('.loc-owner-edit-row');
-    if (!row) return;
-    if (e.key === 'Enter') {
-      row.querySelector('[data-action="save-owner"]').click();
-    } else if (e.key === 'Escape') {
-      row.querySelector('[data-action="cancel-owner"]').click();
+    const nameRow  = e.target.closest('.loc-name-edit-row');
+    const ownerRow = e.target.closest('.loc-owner-edit-row');
+    if (nameRow) {
+      if (e.key === 'Enter')  nameRow.querySelector('[data-action="save-name"]').click();
+      else if (e.key === 'Escape') nameRow.querySelector('[data-action="cancel-name"]').click();
+    } else if (ownerRow) {
+      if (e.key === 'Enter')  ownerRow.querySelector('[data-action="save-owner"]').click();
+      else if (e.key === 'Escape') ownerRow.querySelector('[data-action="cancel-owner"]').click();
     }
   });
 
@@ -1701,6 +1731,39 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!btn) return;
     const id = parseInt(btn.dataset.id);
 
+    if (btn.dataset.action === 'rename') {
+      const nameRow = document.getElementById(`nameEditRow_${id}`);
+      if (nameRow) {
+        nameRow.classList.add('visible');
+        const input = nameRow.querySelector('input');
+        if (input) { input.focus(); input.select(); }
+      }
+      return;
+    }
+    if (btn.dataset.action === 'cancel-name') {
+      const nameRow = document.getElementById(`nameEditRow_${id}`);
+      if (nameRow) nameRow.classList.remove('visible');
+      return;
+    }
+    if (btn.dataset.action === 'save-name') {
+      const nameRow = document.getElementById(`nameEditRow_${id}`);
+      const newName = nameRow ? nameRow.querySelector('input').value.trim() : '';
+      if (!newName) { showToast('שם לא יכול להיות ריק', 'error'); return; }
+      showLoadingOverlay(true);
+      try {
+        await apiFetch('PUT', `/api/locations/${id}`, { name: newName });
+        const cab = db.locations.cabinets.find(c => c.id === id);
+        if (cab) cab.name = newName;
+        renderLocationsManager();
+        render();
+        showToast('השם עודכן ✓', 'success');
+      } catch (e) {
+        showToast('שגיאה: ' + e.message, 'error');
+      } finally {
+        showLoadingOverlay(false);
+      }
+      return;
+    }
     if (btn.dataset.action === 'edit-owner') {
       const row = document.getElementById(`ownerEditRow_${id}`);
       if (row) {
@@ -1772,6 +1835,13 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   ['shelvesList', 'rowsList', 'layersList'].forEach(listId => {
+    document.getElementById(listId).addEventListener('keydown', e => {
+      if (e.target.tagName !== 'INPUT') return;
+      const nameRow = e.target.closest('.loc-name-edit-row');
+      if (!nameRow) return;
+      if (e.key === 'Enter')  nameRow.querySelector('[data-action="save-name"]').click();
+      else if (e.key === 'Escape') nameRow.querySelector('[data-action="cancel-name"]').click();
+    });
     document.getElementById(listId).addEventListener('click', async e => {
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
@@ -1779,6 +1849,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (btn.dataset.action === 'shelf-img') {
         openShelfImgMgmt(id);
+        return;
+      }
+
+      if (btn.dataset.action === 'rename') {
+        const nameRow = document.getElementById(`nameEditRow_${id}`);
+        if (nameRow) {
+          nameRow.classList.add('visible');
+          const input = nameRow.querySelector('input');
+          if (input) { input.focus(); input.select(); }
+        }
+        return;
+      }
+      if (btn.dataset.action === 'cancel-name') {
+        const nameRow = document.getElementById(`nameEditRow_${id}`);
+        if (nameRow) nameRow.classList.remove('visible');
+        return;
+      }
+      if (btn.dataset.action === 'save-name') {
+        const nameRow = document.getElementById(`nameEditRow_${id}`);
+        const newName = nameRow ? nameRow.querySelector('input').value.trim() : '';
+        if (!newName) { showToast('שם לא יכול להיות ריק', 'error'); return; }
+        showLoadingOverlay(true);
+        try {
+          await apiFetch('PUT', `/api/locations/${id}`, { name: newName });
+          const type = btn.dataset.type;
+          const arr = type === 'shelf' ? db.locations.shelves
+                    : type === 'row'   ? db.locations.rows
+                    :                    db.locations.layers;
+          const loc = arr.find(x => x.id === id);
+          if (loc) loc.name = newName;
+          renderLocationsManager();
+          render();
+          showToast('השם עודכן ✓', 'success');
+        } catch (err) {
+          showToast('שגיאה: ' + err.message, 'error');
+        } finally {
+          showLoadingOverlay(false);
+        }
         return;
       }
 
