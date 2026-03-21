@@ -221,8 +221,13 @@
                 <span class="field-error" id="bookNameError"></span>
               </div>
               <div class="form-group">
-                <label for="bookAuthor"><span>שם הסופר <span class="required">*</span></span><button type="button" class="field-lock-btn" data-field="author" title="נעל שדה">🔓</button></label>
-                <input type="text" id="bookAuthor" placeholder="הכנס שם סופר">
+                <label><span>שם הסופר <span class="required">*</span></span><button type="button" class="field-lock-btn" data-field="author" title="נעל שדה">🔓</button></label>
+                <div id="authorFieldsContainer">
+                  <div class="author-field-row">
+                    <input type="text" id="bookAuthor" class="author-input" placeholder="הכנס שם סופר">
+                    <button type="button" class="btn-add-author" title="הוסף סופר">＋</button>
+                  </div>
+                </div>
                 <span class="field-error" id="bookAuthorError"></span>
               </div>
               <div class="form-group">

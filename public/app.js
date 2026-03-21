@@ -142,7 +142,10 @@ function getFilteredBooks() {
     if (state.filter.shelfId   && book.shelfId   !== state.filter.shelfId)   return false;
     if (state.filter.cabinetId && book.cabinetId !== state.filter.cabinetId) return false;
     if (state.seriesFilter && book.series.trim().toLowerCase() !== state.seriesFilter.trim().toLowerCase()) return false;
-    if (state.authorFilter && book.author.trim().toLowerCase() !== state.authorFilter.trim().toLowerCase()) return false;
+    if (state.authorFilter) {
+      const authors = book.author.split(',').map(a => a.trim().toLowerCase());
+      if (!authors.some(a => a === state.authorFilter.trim().toLowerCase())) return false;
+    }
     if (state.search) {
       const q = state.search.toLowerCase();
       const locationParts = getLocationLabel(book).join(' ').toLowerCase();
@@ -414,7 +417,7 @@ function renderDuplicateCard(books) {
     <div class="duplicate-badge">⚠️ ספר כפול (${books.length} עותקים)</div>
     <div class="book-card-top">
       <span class="book-card-title">${esc(books[0].name)}</span>
-      <button class="btn-author-filter" data-action="filter-author" data-author="${esc(books[0].author)}">${esc(books[0].author)}</button>
+      <div class="book-card-authors">${books[0].author.split(',').map(a => a.trim()).filter(Boolean).map(a => `<button class="btn-author-filter" data-action="filter-author" data-author="${esc(a)}">${esc(a)}</button>`).join('')}</div>
     </div>
     ${copies}
   </div>`;
@@ -476,10 +479,12 @@ function renderBookCard(book, isLoaned = false) {
     : '';
   const notesIcon  = book.notes ? `<span title="יש הערות">💬</span>` : '';
   const loanBadge  = isLoaned ? `<span class="loan-badge">📤 מושאל</span>` : '';
+  const authorBtns = book.author.split(',').map(a => a.trim()).filter(Boolean)
+    .map(a => `<button class="btn-author-filter" data-action="filter-author" data-author="${esc(a)}">${esc(a)}</button>`).join('');
   return `<div class="book-card${isLoaned ? ' loaned' : ''}" data-action="open-detail" data-id="${book.id}">
     <div class="book-card-top">
       <span class="book-card-title">${esc(book.name)}</span>
-      <button class="btn-author-filter" data-action="filter-author" data-author="${esc(book.author)}">${esc(book.author)}</button>
+      <div class="book-card-authors">${authorBtns}</div>
     </div>
     ${seriesHtml}
     ${loanBadge}
@@ -527,7 +532,7 @@ function openBookDetailModal(id) {
   document.getElementById('bookDetailBody').innerHTML = `
     <div class="book-detail-field">
       <span class="book-detail-label">סופר</span>
-      <div><button class="btn-author-filter" data-action="filter-author" data-author="${esc(book.author)}" style="font-size:.9rem">${esc(book.author)}</button></div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px">${book.author.split(',').map(a => a.trim()).filter(Boolean).map(a => `<button class="btn-author-filter" data-action="filter-author" data-author="${esc(a)}" style="font-size:.9rem">${esc(a)}</button>`).join('')}</div>
     </div>
     ${seriesHtml}
     <div class="book-detail-field">
@@ -597,6 +602,45 @@ function switchBookModalTab(tab) {
   }
 }
 
+// ---- Multi-author helpers ----
+function getAuthors() {
+  return [...document.querySelectorAll('#authorFieldsContainer .author-input')]
+    .map(i => i.value.trim())
+    .filter(Boolean)
+    .join(', ');
+}
+
+function setAuthors(value) {
+  const container = document.getElementById('authorFieldsContainer');
+  const names = value ? value.split(',').map(a => a.trim()).filter(Boolean) : [];
+  if (!names.length) names.push('');
+  // Clear extra rows, keep first
+  [...container.querySelectorAll('.author-field-row:not(:first-child)')].forEach(r => r.remove());
+  container.querySelector('.author-input').value = names[0];
+  for (let i = 1; i < names.length; i++) {
+    container.appendChild(createExtraAuthorRow(names[i]));
+  }
+}
+
+function createExtraAuthorRow(value) {
+  const row = document.createElement('div');
+  row.className = 'author-field-row';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'author-input';
+  input.placeholder = 'הכנס שם סופר';
+  input.value = value || '';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn-remove-author';
+  btn.title = 'הסר';
+  btn.textContent = '✕';
+  btn.addEventListener('click', () => row.remove());
+  row.appendChild(input);
+  row.appendChild(btn);
+  return row;
+}
+
 function openAddBookModal() {
   state.editingBookId = null;
   resetAllFieldLocks();
@@ -623,7 +667,7 @@ function openEditBookModal(id) {
 
   document.getElementById('bookId').value           = book.id;
   document.getElementById('bookName').value         = book.name;
-  document.getElementById('bookAuthor').value       = book.author;
+  setAuthors(book.author);
   document.getElementById('bookSeries').value       = book.series || '';
   document.getElementById('bookSeriesNumber').value = book.seriesNumber || '';
   document.getElementById('bookNotes').value        = book.notes  || '';
@@ -651,7 +695,7 @@ function openEditBookModal(id) {
 function resetBookForm() {
   document.getElementById('bookId').value           = '';
   document.getElementById('bookName').value         = '';
-  document.getElementById('bookAuthor').value       = '';
+  setAuthors('');
   document.getElementById('bookSeries').value       = '';
   document.getElementById('bookSeriesNumber').value = '';
   document.getElementById('bookNotes').value        = '';
@@ -747,7 +791,7 @@ function hideNewRow(rowId) {
 // ---- Save Book ----
 async function saveBook() {
   const name   = document.getElementById('bookName').value.trim();
-  const author = document.getElementById('bookAuthor').value.trim();
+  const author = getAuthors();
   let valid = true;
 
   document.getElementById('bookNameError').textContent   = '';
@@ -808,7 +852,7 @@ async function saveBook() {
 // ---- Save Book (and continue adding) ----
 async function saveBookAndContinue() {
   const name   = document.getElementById('bookName').value.trim();
-  const author = document.getElementById('bookAuthor').value.trim();
+  const author = getAuthors();
   let valid = true;
 
   document.getElementById('bookNameError').textContent   = '';
@@ -844,7 +888,7 @@ async function saveBookAndContinue() {
 
     // Restore locked fields, clear unlocked ones
     document.getElementById('bookName').value         = fieldLocks.name         ? name         : '';
-    document.getElementById('bookAuthor').value       = fieldLocks.author       ? author        : '';
+    setAuthors(fieldLocks.author ? author : '');
     document.getElementById('bookSeries').value       = fieldLocks.series       ? bookData.series       : '';
     document.getElementById('bookSeriesNumber').value = fieldLocks.seriesNumber ? bookData.seriesNumber : '';
     document.getElementById('bookNotes').value        = fieldLocks.notes        ? bookData.notes        : '';
@@ -1349,7 +1393,7 @@ function openAddBookFromWishlist(id) {
   state.fromWishlistId = id;
   openAddBookModal();
   document.getElementById('bookName').value         = item.name;
-  document.getElementById('bookAuthor').value       = item.author;
+  setAuthors(item.author || '');
   document.getElementById('bookSeries').value       = item.series || '';
   document.getElementById('bookSeriesNumber').value = item.seriesNumber || '';
 }
@@ -2314,6 +2358,15 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById(id).addEventListener('click', e => {
       if (e.target === document.getElementById(id)) closeModal(id);
     });
+  });
+
+  // Add author field button
+  document.getElementById('authorFieldsContainer').addEventListener('click', e => {
+    if (e.target.closest('.btn-add-author')) {
+      const row = createExtraAuthorRow('');
+      document.getElementById('authorFieldsContainer').appendChild(row);
+      row.querySelector('input').focus();
+    }
   });
 
   // Enter key in book form fields

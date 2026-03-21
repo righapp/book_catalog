@@ -742,6 +742,7 @@ button, select, input[type="text"] { touch-action: manipulation; }
   color: var(--color-primary);
   text-decoration: underline;
 }
+.book-card-authors { display:flex; flex-wrap:wrap; gap:2px 6px; justify-content:flex-end; }
 
 /* Notes / image icons inline */
 .book-card-icons {
@@ -1002,11 +1003,25 @@ button, select, input[type="text"] { touch-action: manipulation; }
 .new-item-row { display:none; align-items:center; gap:6px; margin-top:6px; }
 .new-item-row.visible { display:flex; }
 .new-item-row input {
-  flex:1; padding:10px 12px;
+  flex:1; min-width:0; padding:10px 12px;
   border:1.5px solid var(--color-accent); border-radius:var(--r-sm);
   font-size:1rem; outline:none; min-height:44px;
 }
 .new-item-row input:focus { border-color:var(--color-primary); box-shadow:0 0 0 2px rgba(107,63,38,.1); }
+
+.author-field-row { display:flex; align-items:center; gap:6px; }
+.author-field-row + .author-field-row { margin-top:6px; }
+.author-field-row input { flex:1; min-width:0; }
+.btn-add-author, .btn-remove-author {
+  flex-shrink:0; width:36px; height:36px;
+  border-radius:var(--r-sm); border:1.5px solid var(--color-border);
+  background:var(--bg-card); cursor:pointer; font-size:1.1rem;
+  display:flex; align-items:center; justify-content:center;
+  transition:var(--t);
+}
+.btn-add-author:hover { background:var(--bg-hover); }
+.btn-remove-author { color:var(--color-danger); }
+.btn-remove-author:hover { background:#FEE2E2; }
 
 /* ============================================================
    DELETE MODAL
