@@ -10,10 +10,11 @@ const state = {
   filter: { cabinetId: null, shelfId: null, rowId: null, layerId: null, owner: null },
   seriesFilter: null,  // string | null
   authorFilter: null,  // string | null
-  mobileTab: 'catalog', // 'catalog' | 'manage'
+  mobileTab: 'catalog', // 'catalog' | 'manage' | 'loans'
   editingBookId: null,
   deletingBookId: null,
   viewingBookId: null,
+  viewingLoanId: null,
 };
 
 const SORT_LABELS = {
@@ -28,7 +29,8 @@ const SORT_LABELS = {
 // API LAYER
 // ============================================================
 
-let db = { books: [], locations: { cabinets: [], shelves: [], rows: [], layers: [] } };
+let db = { books: [], locations: { cabinets: [], shelves: [], rows: [], layers: [] }, loans: [] };
+let loanSelectedBookId = null;
 
 async function apiFetch(method, path, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
@@ -42,10 +44,14 @@ async function apiFetch(method, path, body) {
 }
 
 async function loadData() {
-  const data = await apiFetch('GET', '/api/data');
+  const [data, loans] = await Promise.all([
+    apiFetch('GET', '/api/data'),
+    apiFetch('GET', '/api/loans'),
+  ]);
   db.books     = data.books;
   db.locations = data.locations;
   if (!db.locations.layers) db.locations.layers = [];
+  db.loans = loans;
 }
 
 function showLoadingOverlay(show) {
@@ -177,16 +183,22 @@ function renderStats() {
 function switchMobileTab(tab) {
   state.mobileTab = tab;
   const isCatalog = tab === 'catalog';
+  const isManage  = tab === 'manage';
+  const isLoans   = tab === 'loans';
 
   document.getElementById('catalogView').style.display    = isCatalog ? '' : 'none';
-  document.getElementById('managementView').style.display = isCatalog ? 'none' : 'block';
+  document.getElementById('managementView').style.display = isManage ? 'block' : 'none';
+  document.getElementById('loansView').style.display      = isLoans ? 'block' : 'none';
   document.getElementById('statsBar').style.display       = isCatalog ? '' : 'none';
 
   document.querySelectorAll('.bottom-tab').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tab === tab);
   });
 
-  document.body.classList.toggle('tab-manage', !isCatalog);
+  document.body.classList.toggle('tab-manage', isManage);
+  document.body.classList.toggle('tab-loans',  isLoans);
+
+  if (isLoans) renderLoansPage();
 
   // Scroll to top when switching
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -416,20 +428,22 @@ function renderBooks() {
 
   const displayBooks = books.filter(b => !secondaryIds.has(b.id));
 
+  const loanedBookIds = new Set(db.loans.map(l => l.bookId));
+
   if (state.view === 'grid') {
     container.innerHTML = displayBooks.map(book => {
       const group = duplicateMap.get(book.id);
-      return group ? renderDuplicateCard(group) : renderBookCard(book);
+      return group ? renderDuplicateCard(group) : renderBookCard(book, loanedBookIds.has(book.id));
     }).join('');
   } else {
     container.innerHTML = displayBooks.map(book => {
       const group = duplicateMap.get(book.id);
-      return group ? renderDuplicateRow(group) : renderBookRow(book);
+      return group ? renderDuplicateRow(group) : renderBookRow(book, loanedBookIds.has(book.id));
     }).join('');
   }
 }
 
-function renderBookCard(book) {
+function renderBookCard(book, isLoaned = false) {
   const loc = getLocationLabel(book);
   const badges = loc.map(l => `<span class="location-badge">${esc(l)}</span>`).join('');
   const row    = book.rowId ? getRow(book.rowId) : null;
@@ -440,18 +454,20 @@ function renderBookCard(book) {
   const seriesHtml = seriesLabel
     ? `<div class="book-card-series"><button class="btn-series-filter" data-action="filter-series" data-series="${esc(book.series)}">📚 ${seriesLabel}</button></div>`
     : '';
-  const notesIcon = book.notes ? `<span title="יש הערות">💬</span>` : '';
-  return `<div class="book-card" data-action="open-detail" data-id="${book.id}">
+  const notesIcon  = book.notes ? `<span title="יש הערות">💬</span>` : '';
+  const loanBadge  = isLoaned ? `<span class="loan-badge">📤 מושאל</span>` : '';
+  return `<div class="book-card${isLoaned ? ' loaned' : ''}" data-action="open-detail" data-id="${book.id}">
     <div class="book-card-top">
       <span class="book-card-title">${esc(book.name)}</span>
       <button class="btn-author-filter" data-action="filter-author" data-author="${esc(book.author)}">${esc(book.author)}</button>
     </div>
     ${seriesHtml}
+    ${loanBadge}
     <div class="book-card-location">${badges || '<span class="location-badge" style="opacity:.5">ללא מיקום</span>'}${imgBtn}${notesIcon}</div>
   </div>`;
 }
 
-function renderBookRow(book) {
+function renderBookRow(book, isLoaned = false) {
   const loc = getLocationLabel(book);
   const badges = loc.map(l => `<span class="location-badge">${esc(l)}</span>`).join('');
   const row    = book.rowId ? getRow(book.rowId) : null;
@@ -463,13 +479,15 @@ function renderBookRow(book) {
     ? `<button class="btn-series-filter" data-action="filter-series" data-series="${esc(book.series)}" style="margin-bottom:2px">📚 ${seriesLabel2}</button>`
     : '';
   const notesIcon = book.notes ? `<span title="יש הערות">💬</span>` : '';
-  return `<div class="book-row" data-action="open-detail" data-id="${book.id}" style="cursor:pointer">
+  const loanBadge = isLoaned ? `<span class="loan-badge" style="margin-bottom:2px">📤 מושאל</span>` : '';
+  return `<div class="book-row${isLoaned ? ' loaned' : ''}" data-action="open-detail" data-id="${book.id}" style="cursor:pointer">
     <div class="book-row-main">
       <div class="book-card-top">
         <span class="book-card-title">${esc(book.name)}</span>
         <button class="btn-author-filter" data-action="filter-author" data-author="${esc(book.author)}">${esc(book.author)}</button>
       </div>
       ${seriesHtml}
+      ${loanBadge}
       <div class="book-row-location">${badges || '<span class="location-badge" style="opacity:.5">ללא מיקום</span>'}${imgBtn}${notesIcon}</div>
     </div>
   </div>`;
@@ -506,6 +524,18 @@ function openBookDetailModal(id) {
       </div>`
     : '';
 
+  const loan = db.loans.find(l => l.bookId === id);
+  const loanHtml = loan
+    ? `<div class="book-detail-field loan-info-box">
+        <span class="book-detail-label">📤 מושאל כרגע</span>
+        <div class="loan-info-detail">
+          <span>👤 ${esc(loan.borrower)}</span>
+          ${loan.phone ? `<span>📞 ${esc(loan.phone)}</span>` : ''}
+          ${loan.date ? `<span>📅 ${esc(loan.date)}</span>` : ''}
+        </div>
+      </div>`
+    : '';
+
   document.getElementById('bookDetailTitle').textContent = book.name;
   document.getElementById('bookDetailBody').innerHTML = `
     <div class="book-detail-field">
@@ -518,8 +548,11 @@ function openBookDetailModal(id) {
       <div class="book-card-location" style="margin-top:2px">${badges || '<span class="location-badge" style="opacity:.5">ללא מיקום</span>'}</div>
     </div>
     ${notesHtml}
+    ${loanHtml}
     ${imgHtml}
   `;
+
+  document.getElementById('bookDetailLoan').style.display = loan ? 'none' : '';
 
   openModal('bookDetailModal');
 }
@@ -1166,6 +1199,145 @@ function renderLayersList(filterRowId) {
 }
 
 // ============================================================
+// LOANS
+// ============================================================
+
+function renderLoansPage() {
+  const container = document.getElementById('loansContainer');
+  if (!db.loans.length) {
+    container.innerHTML = `<div class="empty-state" style="margin-top:30px">
+      <div class="empty-icon">📖</div>
+      <h3>אין ספרים מושאלים כרגע</h3>
+    </div>`;
+    return;
+  }
+  container.innerHTML = db.loans.map(loan => {
+    const book = db.books.find(b => b.id === loan.bookId);
+    return `<div class="loan-card" data-action="open-loan" data-id="${loan.id}">
+      <div class="loan-card-main">
+        <div class="loan-card-book">${esc(book ? book.name : `ספר #${loan.bookId}`)}</div>
+        ${book ? `<div class="loan-card-author">${esc(book.author)}</div>` : ''}
+      </div>
+      <div class="loan-card-info">
+        <span>👤 ${esc(loan.borrower)}</span>
+        ${loan.phone ? `<span>📞 ${esc(loan.phone)}</span>` : ''}
+        ${loan.date ? `<span>📅 ${esc(loan.date)}</span>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openLoanModal(bookId = null) {
+  loanSelectedBookId = bookId;
+  document.getElementById('loanBorrower').value          = '';
+  document.getElementById('loanPhone').value             = '';
+  document.getElementById('loanDate').value              = new Date().toISOString().split('T')[0];
+  document.getElementById('loanBorrowerError').textContent = '';
+  document.getElementById('loanBookError').textContent   = '';
+  document.getElementById('loanBookInput').value         = '';
+  document.getElementById('loanBookResults').innerHTML   = '';
+
+  if (bookId) {
+    const book = db.books.find(b => b.id === bookId);
+    if (book) {
+      document.getElementById('loanBookSelectedName').textContent = `${book.name} — ${book.author}`;
+      document.getElementById('loanBookSelected').classList.remove('hidden');
+      document.getElementById('loanBookInput').style.display = 'none';
+    }
+  } else {
+    document.getElementById('loanBookSelected').classList.add('hidden');
+    document.getElementById('loanBookInput').style.display = '';
+  }
+
+  openModal('loanModal');
+  setTimeout(() => document.getElementById('loanBorrower').focus(), 50);
+}
+
+async function saveLoan() {
+  const borrower = document.getElementById('loanBorrower').value.trim();
+  const phone    = document.getElementById('loanPhone').value.trim();
+  const date     = document.getElementById('loanDate').value;
+
+  let valid = true;
+  document.getElementById('loanBorrowerError').textContent = '';
+  document.getElementById('loanBookError').textContent     = '';
+
+  if (!loanSelectedBookId) { document.getElementById('loanBookError').textContent = 'בחר ספר'; valid = false; }
+  if (!borrower)           { document.getElementById('loanBorrowerError').textContent = 'שדה חובה'; valid = false; }
+  if (!valid) return;
+
+  showLoadingOverlay(true);
+  try {
+    const result = await apiFetch('POST', '/api/loans', { bookId: loanSelectedBookId, borrower, phone, date });
+    db.loans.push(result);
+    closeModal('loanModal');
+    renderLoansPage();
+    render();
+    showToast('ההשאלה נרשמה ✓', 'success');
+  } catch (e) {
+    showToast('שגיאה: ' + e.message, 'error');
+  } finally {
+    showLoadingOverlay(false);
+  }
+}
+
+function openLoanDetailModal(loanId) {
+  const loan = db.loans.find(l => l.id === loanId);
+  if (!loan) return;
+  state.viewingLoanId = loanId;
+
+  const book = db.books.find(b => b.id === loan.bookId);
+  const loc  = book ? getLocationLabel(book) : [];
+  const badges = loc.map(p => `<span class="location-badge">${esc(p)}</span>`).join('');
+
+  document.getElementById('loanDetailBody').innerHTML = `
+    <div class="book-detail-field">
+      <span class="book-detail-label">ספר</span>
+      <div style="font-weight:700;font-size:1rem">${esc(book ? book.name : `ספר #${loan.bookId}`)}</div>
+    </div>
+    ${book ? `<div class="book-detail-field">
+      <span class="book-detail-label">סופר</span>
+      <div>${esc(book.author)}</div>
+    </div>` : ''}
+    ${loc.length ? `<div class="book-detail-field">
+      <span class="book-detail-label">מיקום</span>
+      <div class="book-card-location" style="margin-top:2px">${badges}</div>
+    </div>` : ''}
+    <div class="book-detail-field">
+      <span class="book-detail-label">שואל</span>
+      <div>${esc(loan.borrower)}</div>
+    </div>
+    ${loan.phone ? `<div class="book-detail-field">
+      <span class="book-detail-label">טלפון</span>
+      <div>${esc(loan.phone)}</div>
+    </div>` : ''}
+    ${loan.date ? `<div class="book-detail-field">
+      <span class="book-detail-label">תאריך השאלה</span>
+      <div>${esc(loan.date)}</div>
+    </div>` : ''}
+  `;
+  openModal('loanDetailModal');
+}
+
+async function returnBook() {
+  if (!state.viewingLoanId) return;
+  showLoadingOverlay(true);
+  try {
+    await apiFetch('DELETE', `/api/loans/${state.viewingLoanId}`);
+    db.loans = db.loans.filter(l => l.id !== state.viewingLoanId);
+    state.viewingLoanId = null;
+    closeModal('loanDetailModal');
+    renderLoansPage();
+    render();
+    showToast('הספר הוחזר ✓', 'success');
+  } catch (e) {
+    showToast('שגיאה: ' + e.message, 'error');
+  } finally {
+    showLoadingOverlay(false);
+  }
+}
+
+// ============================================================
 // TOAST
 // ============================================================
 let toastTimer;
@@ -1497,6 +1669,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // ---- Book Detail Modal ----
   document.getElementById('bookDetailClose').addEventListener('click',  () => closeModal('bookDetailModal'));
   document.getElementById('bookDetailClose2').addEventListener('click', () => closeModal('bookDetailModal'));
+  document.getElementById('bookDetailLoan').addEventListener('click', () => {
+    const id = state.viewingBookId;
+    closeModal('bookDetailModal');
+    openLoanModal(id);
+  });
+
   document.getElementById('bookDetailEdit').addEventListener('click', () => {
     const id = state.viewingBookId;
     closeModal('bookDetailModal');
@@ -2141,7 +2319,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('shelfImgViewClose2').addEventListener('click', () => closeModal('shelfImgViewModal'));
 
   // Close modal on overlay click
-  ['bookModal', 'deleteModal', 'locationsModal', 'bookDetailModal', 'shelfImgMgmtModal', 'shelfImgViewModal'].forEach(id => {
+  ['bookModal', 'deleteModal', 'locationsModal', 'bookDetailModal', 'shelfImgMgmtModal', 'shelfImgViewModal', 'loanModal', 'loanDetailModal'].forEach(id => {
     document.getElementById(id).addEventListener('click', e => {
       if (e.target === document.getElementById(id)) closeModal(id);
     });
@@ -2282,7 +2460,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('importModalConfirm').addEventListener('click', confirmImport);
 
   // ---- Back button: close open modal/sidebar instead of leaving app ----
-  const ALL_MODALS = ['bookModal', 'deleteModal', 'locationsModal', 'bookDetailModal', 'shelfImgMgmtModal', 'shelfImgViewModal'];
+  const ALL_MODALS = ['bookModal', 'deleteModal', 'locationsModal', 'bookDetailModal', 'shelfImgMgmtModal', 'shelfImgViewModal', 'loanModal', 'loanDetailModal'];
   window.addEventListener('popstate', () => {
     if (_historyBack) { _historyBack = false; return; }
     const openId = ALL_MODALS.find(id => document.getElementById(id).classList.contains('open'));
@@ -2292,6 +2470,65 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('sidebarBackdrop').classList.remove('open');
       document.body.style.overflow = '';
     }
+  });
+
+  // ---- Loans ----
+  document.getElementById('addLoanBtn').addEventListener('click', () => openLoanModal());
+  document.getElementById('loanModalClose').addEventListener('click',   () => closeModal('loanModal'));
+  document.getElementById('loanModalCancel').addEventListener('click',  () => closeModal('loanModal'));
+  document.getElementById('loanModalSave').addEventListener('click', saveLoan);
+  document.getElementById('loanDetailClose').addEventListener('click',  () => closeModal('loanDetailModal'));
+  document.getElementById('loanDetailClose2').addEventListener('click', () => closeModal('loanDetailModal'));
+  document.getElementById('loanDetailReturn').addEventListener('click', returnBook);
+
+  // Loan book search
+  document.getElementById('loanBookInput').addEventListener('input', () => {
+    const q = document.getElementById('loanBookInput').value.trim().toLowerCase();
+    const resultsEl = document.getElementById('loanBookResults');
+    if (!q) { resultsEl.innerHTML = ''; return; }
+    const matches = db.books
+      .filter(b => b.name.toLowerCase().includes(q) || b.author.toLowerCase().includes(q))
+      .slice(0, 8);
+    if (!matches.length) {
+      resultsEl.innerHTML = '<div class="loan-book-result-empty">לא נמצאו ספרים</div>';
+      return;
+    }
+    resultsEl.innerHTML = matches.map(b =>
+      `<div class="loan-book-result" data-id="${b.id}">
+        <span class="loan-book-result-name">${esc(b.name)}</span>
+        <span class="loan-book-result-author">${esc(b.author)}</span>
+      </div>`
+    ).join('');
+  });
+
+  document.getElementById('loanBookResults').addEventListener('click', e => {
+    const item = e.target.closest('.loan-book-result');
+    if (!item) return;
+    const id = parseInt(item.dataset.id);
+    const book = db.books.find(b => b.id === id);
+    if (!book) return;
+    loanSelectedBookId = id;
+    document.getElementById('loanBookInput').value = '';
+    document.getElementById('loanBookInput').style.display = 'none';
+    document.getElementById('loanBookResults').innerHTML = '';
+    document.getElementById('loanBookSelectedName').textContent = `${book.name} — ${book.author}`;
+    document.getElementById('loanBookSelected').classList.remove('hidden');
+    document.getElementById('loanBookError').textContent = '';
+  });
+
+  document.getElementById('clearLoanBook').addEventListener('click', () => {
+    loanSelectedBookId = null;
+    document.getElementById('loanBookSelected').classList.add('hidden');
+    document.getElementById('loanBookInput').style.display = '';
+    document.getElementById('loanBookInput').value = '';
+    document.getElementById('loanBookInput').focus();
+  });
+
+  // Loans container delegated click
+  document.getElementById('loansContainer').addEventListener('click', e => {
+    const el = e.target.closest('[data-action]');
+    if (!el) return;
+    if (el.dataset.action === 'open-loan') openLoanDetailModal(parseInt(el.dataset.id));
   });
 
   // ---- Initial load ----

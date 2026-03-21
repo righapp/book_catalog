@@ -6,7 +6,9 @@
       "Bash(curl -s -X POST http://localhost:3000/api/books \\\\\n  -H \"Content-Type: application/json\" \\\\\n  -d '{\"name\":\"הארי פוטר\",\"author\":\"רולינג\",\"cabinetId\":null,\"shelfId\":null,\"rowId\":null}')",
       "Bash(curl -s http://localhost:3000/api/data | node -e \"const d=JSON.parse\\(require\\('fs'\\).readFileSync\\('/dev/stdin','utf8'\\)\\); console.log\\('ספרים:',d.books.length, d.books[0]?.name\\)\")",
       "Bash(curl -s http://localhost:3000/api/data)",
-      "Bash(pkill -f \"node server.js\" 2>/dev/null; echo \"done\")"
+      "Bash(pkill -f \"node server.js\" 2>/dev/null; echo \"done\")",
+      "Bash(node --check \"C:/Users/shlom/claude_projects/book-catalog/server.js\")",
+      "Bash(node --check \"C:/Users/shlom/claude_projects/book-catalog/public/app.js\")"
     ]
   }
 }

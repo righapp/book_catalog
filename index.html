@@ -149,11 +149,24 @@
 
   </div>
 
+  <!-- ===== LOANS VIEW (mobile tab 3) ===== -->
+  <div id="loansView" class="loans-view">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--color-border-lt)">
+      <h2 class="mgmt-heading" style="margin:0;border:none;padding:0">השאלות 📖</h2>
+      <button class="btn-primary" id="addLoanBtn" style="min-height:40px;padding:0 14px;font-size:.9rem">＋ השאל ספר</button>
+    </div>
+    <div id="loansContainer"></div>
+  </div>
+
   <!-- ===== BOTTOM NAV (mobile only) ===== -->
   <nav class="bottom-nav" id="bottomNav">
     <button class="bottom-tab active" id="bottomTabCatalog" data-tab="catalog">
       <span class="bottom-tab-icon">📚</span>
       <span class="bottom-tab-label">קטלוג</span>
+    </button>
+    <button class="bottom-tab" id="bottomTabLoans" data-tab="loans">
+      <span class="bottom-tab-icon">📖</span>
+      <span class="bottom-tab-label">השאלות</span>
     </button>
     <button class="bottom-tab" id="bottomTabManage" data-tab="manage">
       <span class="bottom-tab-icon">⚙️</span>
@@ -392,10 +405,67 @@
         <button class="modal-close" id="bookDetailClose">✕</button>
       </div>
       <div class="modal-body" id="bookDetailBody"></div>
-      <div class="modal-footer">
+      <div class="modal-footer modal-footer-wrap">
         <button class="btn-secondary" id="bookDetailClose2">סגור</button>
+        <button class="btn-primary" id="bookDetailLoan" style="background:#EA580C">📤 השאל</button>
         <button class="btn-primary" id="bookDetailEdit">✏️ עריכה</button>
         <button class="btn-danger" id="bookDetailDelete">🗑️ מחק</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== LOAN MODAL ===== -->
+  <div class="modal-overlay" id="loanModal">
+    <div class="modal modal-small">
+      <div class="modal-header">
+        <h2>📤 השאל ספר</h2>
+        <button class="modal-close" id="loanModalClose">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group" style="margin-bottom:14px">
+          <label>ספר <span class="required">*</span></label>
+          <div class="loan-book-search-wrap">
+            <input type="text" id="loanBookInput" placeholder="חפש ספר לפי שם או מחבר..." autocomplete="off">
+            <div class="loan-book-results" id="loanBookResults"></div>
+          </div>
+          <div class="loan-book-selected hidden" id="loanBookSelected">
+            <span id="loanBookSelectedName"></span>
+            <button type="button" class="loan-book-clear" id="clearLoanBook">✕</button>
+          </div>
+          <span class="field-error" id="loanBookError"></span>
+        </div>
+        <div class="form-group" style="margin-bottom:14px">
+          <label for="loanBorrower">שם שואל <span class="required">*</span></label>
+          <input type="text" id="loanBorrower" placeholder="הכנס שם שואל">
+          <span class="field-error" id="loanBorrowerError"></span>
+        </div>
+        <div class="form-group" style="margin-bottom:14px">
+          <label for="loanPhone">מספר טלפון</label>
+          <input type="text" id="loanPhone" placeholder="05x-xxxxxxx" inputmode="tel">
+        </div>
+        <div class="form-group">
+          <label for="loanDate">תאריך השאלה</label>
+          <input type="date" id="loanDate">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="loanModalCancel">ביטול</button>
+        <button class="btn-primary" id="loanModalSave">📤 השאל</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== LOAN DETAIL MODAL ===== -->
+  <div class="modal-overlay" id="loanDetailModal">
+    <div class="modal modal-small">
+      <div class="modal-header">
+        <h2>📖 פרטי השאלה</h2>
+        <button class="modal-close" id="loanDetailClose">✕</button>
+      </div>
+      <div class="modal-body" id="loanDetailBody"></div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="loanDetailClose2">סגור</button>
+        <button class="btn-primary" id="loanDetailReturn" style="background:#2E7D32">✅ הוחזר</button>
       </div>
     </div>
   </div>

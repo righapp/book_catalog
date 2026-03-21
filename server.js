@@ -16,6 +16,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 const BOOKS_SHEET    = 'ספרים';
 const LOC_SHEET      = 'מיקומים';
+const LOANS_SHEET    = 'השאלות';
 
 if (!SPREADSHEET_ID || !process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
   console.error('❌  חסרים SPREADSHEET_ID או GOOGLE_SERVICE_ACCOUNT_JSON ב-.env');
@@ -135,6 +136,19 @@ function parseLocations(rows) {
   return out;
 }
 
+function parseLoans(rows) {
+  if (rows.length <= 1) return [];
+  return rows.slice(1)
+    .map(r => ({
+      id:       parseInt(r[0]),
+      bookId:   parseInt(r[1]),
+      borrower: r[2] || '',
+      phone:    r[3] || '',
+      date:     r[4] || '',
+    }))
+    .filter(l => l.id && l.bookId);
+}
+
 function maxId(items) {
   if (!items.length) return 0;
   return Math.max(...items.map(i => i.id));
@@ -148,7 +162,7 @@ async function ensureSheets() {
   const existing = meta.data.sheets.map(sh => sh.properties.title);
   meta.data.sheets.forEach(sh => { _sheetIds[sh.properties.title] = sh.properties.sheetId; });
 
-  const toAdd = [BOOKS_SHEET, LOC_SHEET].filter(n => !existing.includes(n));
+  const toAdd = [BOOKS_SHEET, LOC_SHEET, LOANS_SHEET].filter(n => !existing.includes(n));
   if (toAdd.length) {
     const res = await s.spreadsheets.batchUpdate({
       spreadsheetId: SPREADSHEET_ID,
@@ -167,6 +181,10 @@ async function ensureSheets() {
   const locRows = await sheetGet(LOC_SHEET);
   if (!locRows.length) {
     await sheetAppend(LOC_SHEET, [['סוג', 'id', 'שם', 'parent_id']], 'A:F');
+  }
+  const loansRows = await sheetGet(LOANS_SHEET);
+  if (!loansRows.length) {
+    await sheetAppend(LOANS_SHEET, [['id', 'book_id', 'שם_שואל', 'טלפון', 'תאריך_השאלה']], 'A:E');
   }
 }
 
@@ -386,6 +404,38 @@ app.delete('/api/locations/:id', async (req, res) => {
       await sheetDeleteRow(LOC_SHEET, idx);
     }
 
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/loans
+app.get('/api/loans', async (req, res) => {
+  try {
+    const rows = await sheetGet(LOANS_SHEET);
+    res.json(parseLoans(rows));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/loans
+app.post('/api/loans', async (req, res) => {
+  try {
+    const { bookId, borrower, phone, date } = req.body;
+    const rows   = await sheetGet(LOANS_SHEET);
+    const loans  = parseLoans(rows);
+    const nextId = (loans.length ? Math.max(...loans.map(l => l.id)) : 0) + 1;
+    await sheetAppend(LOANS_SHEET, [[nextId, bookId, borrower, phone ?? '', date ?? '']], 'A:E');
+    res.json({ id: nextId, bookId, borrower, phone: phone ?? '', date: date ?? '' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /api/loans/:id
+app.delete('/api/loans/:id', async (req, res) => {
+  try {
+    const targetId = parseInt(req.params.id);
+    const rows     = await sheetGet(LOANS_SHEET);
+    const idx      = rows.findIndex((r, i) => i > 0 && parseInt(r[0]) === targetId);
+    if (idx === -1) return res.status(404).json({ error: 'לא נמצא' });
+    await sheetDeleteRow(LOANS_SHEET, idx);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
