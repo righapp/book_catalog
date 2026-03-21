@@ -1000,7 +1000,7 @@ button, select, input[type="text"] { touch-action: manipulation; }
 .required { color:var(--color-danger); }
 .field-error { font-size:.78rem; color:var(--color-danger); min-height:16px; }
 
-.new-item-row { display:none; align-items:center; gap:6px; margin-top:6px; }
+.new-item-row { display:none; align-items:center; gap:8px; margin-top:8px; margin-bottom:4px; }
 .new-item-row.visible { display:flex; }
 .new-item-row input {
   flex:1; min-width:0; padding:10px 12px;
