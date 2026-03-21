@@ -1622,6 +1622,7 @@ document.addEventListener('DOMContentLoaded', () => {
     state.search = searchInput.value;
     searchClear.classList.toggle('visible', state.search.length > 0);
     render();
+    window.scrollTo(0, 0);
   });
 
   searchClear.addEventListener('click', () => {
