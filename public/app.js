@@ -986,8 +986,8 @@ async function saveShelfImage(imageValue) {
     if (row) row.image = imageValue;
     const currentWrap = document.getElementById('shelfImgCurrentWrap');
     const currentImg  = document.getElementById('shelfImgCurrent');
-    if (base64) {
-      currentImg.src = base64;
+    if (imageValue) {
+      currentImg.src = imageValue;
       currentWrap.style.display = '';
     } else {
       currentImg.src = '';
@@ -995,7 +995,7 @@ async function saveShelfImage(imageValue) {
     }
     renderRowsList(parseInt(document.getElementById('newRowShelf').value) || null);
     render();
-    showToast(base64 ? 'התמונה נשמרה ✓' : 'התמונה נמחקה ✓', 'success');
+    showToast(imageValue ? 'התמונה נשמרה ✓' : 'התמונה נמחקה ✓', 'success');
   } catch (e) {
     showToast('שגיאה: ' + e.message, 'error');
   } finally {
