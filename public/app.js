@@ -430,7 +430,14 @@ function renderDuplicateRow(books) {
 
 // ---- Books ----
 function renderBooks() {
-  const books = sortBooks(getFilteredBooks());
+  let books = sortBooks(getFilteredBooks());
+  if (state.seriesFilter) {
+    books = books.sort((a, b) => {
+      const na = parseInt(a.seriesNumber) || Infinity;
+      const nb = parseInt(b.seriesNumber) || Infinity;
+      return na - nb;
+    });
+  }
   const container = document.getElementById('booksContainer');
   const empty = document.getElementById('emptyState');
 
