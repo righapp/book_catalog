@@ -68,8 +68,6 @@
       <div class="stats-sep"></div>
       <button class="btn-icon" id="filterToggleBtn" title="סינון לפי מיקום">🗂️ <span class="filter-label">סינון</span><span class="filter-badge" id="filterBadge"></span></button>
       <div class="stats-sep"></div>
-      <button class="btn-icon active" id="viewGridBtn" title="תצוגת כרטיסים">⊞</button>
-      <button class="btn-icon" id="viewListBtn" title="תצוגת רשימה">☰</button>
       <button class="btn-icon desktop-only" id="manageLocationsBtn" title="ניהול מיקומים">🗂️ ניהול מיקומים</button>
     </div>
   </div>
@@ -470,6 +468,10 @@
           <label for="loanDate">תאריך השאלה</label>
           <input type="date" id="loanDate">
         </div>
+        <div class="form-group" style="margin-top:10px">
+          <label for="loanNotes">הערות</label>
+          <textarea id="loanNotes" placeholder="הערות (אופציונלי)" rows="2" style="resize:vertical"></textarea>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn-secondary" id="loanModalCancel">ביטול</button>
@@ -561,6 +563,10 @@
             <label for="wishlistBookSeriesNumber"># בסדרה</label>
             <input type="number" id="wishlistBookSeriesNumber" placeholder="מס'" min="1">
           </div>
+        </div>
+        <div class="form-group" style="margin-top:10px">
+          <label for="wishlistBookNotes">הערות</label>
+          <textarea id="wishlistBookNotes" placeholder="הערות (אופציונלי)" rows="2" style="resize:vertical"></textarea>
         </div>
       </div>
       <div class="modal-footer">

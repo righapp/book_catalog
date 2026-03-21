@@ -146,6 +146,7 @@ function parseLoans(rows) {
       borrower: r[2] || '',
       phone:    r[3] || '',
       date:     r[4] || '',
+      notes:    r[5] || '',
     }))
     .filter(l => l.id && l.bookId);
 }
@@ -160,6 +161,7 @@ function parseWishlist(rows) {
       bought:       r[3] || '',
       series:       r[4] || '',
       seriesNumber: r[5] || '',
+      notes:        r[6] || '',
     }))
     .filter(w => w.id && w.name);
 }
@@ -199,11 +201,11 @@ async function ensureSheets() {
   }
   const loansRows = await sheetGet(LOANS_SHEET);
   if (!loansRows.length) {
-    await sheetAppend(LOANS_SHEET, [['id', 'book_id', 'שם_שואל', 'טלפון', 'תאריך_השאלה']], 'A:E');
+    await sheetAppend(LOANS_SHEET, [['id', 'book_id', 'שם_שואל', 'טלפון', 'תאריך_השאלה', 'הערות']], 'A:F');
   }
   const wishlistRows = await sheetGet(WISHLIST_SHEET);
   if (!wishlistRows.length) {
-    await sheetAppend(WISHLIST_SHEET, [['id', 'שם_ספר', 'שם_סופר', 'נקנה', 'סדרה', 'מספר_בסדרה']], 'A:F');
+    await sheetAppend(WISHLIST_SHEET, [['id', 'שם_ספר', 'שם_סופר', 'נקנה', 'סדרה', 'מספר_בסדרה', 'הערות']], 'A:G');
   }
 }
 
@@ -438,12 +440,12 @@ app.get('/api/loans', async (req, res) => {
 // POST /api/loans
 app.post('/api/loans', async (req, res) => {
   try {
-    const { bookId, borrower, phone, date } = req.body;
+    const { bookId, borrower, phone, date, notes } = req.body;
     const rows   = await sheetGet(LOANS_SHEET);
     const loans  = parseLoans(rows);
     const nextId = (loans.length ? Math.max(...loans.map(l => l.id)) : 0) + 1;
-    await sheetAppend(LOANS_SHEET, [[nextId, bookId, borrower, phone ?? '', date ?? '']], 'A:E');
-    res.json({ id: nextId, bookId, borrower, phone: phone ?? '', date: date ?? '' });
+    await sheetAppend(LOANS_SHEET, [[nextId, bookId, borrower, phone ?? '', date ?? '', notes ?? '']], 'A:F');
+    res.json({ id: nextId, bookId, borrower, phone: phone ?? '', date: date ?? '', notes: notes ?? '' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -470,12 +472,12 @@ app.get('/api/wishlist', async (req, res) => {
 // POST /api/wishlist
 app.post('/api/wishlist', async (req, res) => {
   try {
-    const { name, author, series, seriesNumber } = req.body;
+    const { name, author, series, seriesNumber, notes } = req.body;
     const rows   = await sheetGet(WISHLIST_SHEET);
     const items  = parseWishlist(rows);
     const nextId = (items.length ? Math.max(...items.map(i => i.id)) : 0) + 1;
-    await sheetAppend(WISHLIST_SHEET, [[nextId, name, author ?? '', '', series ?? '', seriesNumber ?? '']], 'A:F');
-    res.json({ id: nextId, name, author: author ?? '', bought: '', series: series ?? '', seriesNumber: seriesNumber ?? '' });
+    await sheetAppend(WISHLIST_SHEET, [[nextId, name, author ?? '', '', series ?? '', seriesNumber ?? '', notes ?? '']], 'A:G');
+    res.json({ id: nextId, name, author: author ?? '', bought: '', series: series ?? '', seriesNumber: seriesNumber ?? '', notes: notes ?? '' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -487,7 +489,7 @@ app.put('/api/wishlist/:id', async (req, res) => {
     const idx  = rows.findIndex((r, i) => i > 0 && parseInt(r[0]) === targetId);
     if (idx === -1) return res.status(404).json({ error: 'לא נמצא' });
     const row = rows[idx];
-    await sheetUpdate(WISHLIST_SHEET, idx + 1, [row[0], row[1], row[2], 'כן', row[4] ?? '', row[5] ?? '']);
+    await sheetUpdate(WISHLIST_SHEET, idx + 1, [row[0], row[1], row[2], 'כן', row[4] ?? '', row[5] ?? '', row[6] ?? '']);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

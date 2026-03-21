@@ -666,11 +666,6 @@ button, select, input[type="text"] { touch-action: manipulation; }
   gap: 12px;
 }
 
-.books-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
 
 /* Card */
 .book-card {
@@ -836,20 +831,6 @@ button, select, input[type="text"] { touch-action: manipulation; }
 .btn-card-edit:active   { background:var(--color-primary); color:#fff; }
 .btn-card-delete:active { background:var(--color-danger);  color:#fff; }
 
-/* Row (list view) */
-.book-row {
-  background:var(--bg-surface); border-radius:var(--r-sm);
-  padding:12px 14px; box-shadow:var(--shadow-sm);
-  border:1.5px solid var(--color-border-lt);
-  display:flex; align-items:center; gap:12px;
-  transition:var(--t); animation:fadeIn .2s ease;
-  min-height: 64px;
-}
-.book-row:active { border-color:var(--color-border); box-shadow:var(--shadow-md); }
-
-.book-row-main     { flex:1; min-width:0; display:flex; flex-direction:column; gap:5px; }
-.book-row-location { display:flex; flex-wrap:wrap; gap:4px; }
-.book-row-actions  { display:flex; gap:6px; flex-shrink:0; }
 
 /* ============================================================
    MODALS  (mobile: fullscreen)
@@ -1502,11 +1483,6 @@ button, select, input[type="text"] { touch-action: manipulation; }
   letter-spacing: .3px;
 }
 
-/* In list view */
-.book-row.duplicate-row {
-  border-color: var(--color-danger);
-  border-width: 2px;
-}
 
 /* ============================================================
    MULTI-ADD MODE
@@ -1686,10 +1662,6 @@ button, select, input[type="text"] { touch-action: manipulation; }
 
 /* Loaned book — orange border in catalog */
 .book-card.loaned {
-  border-color: #F97316;
-  border-width: 2px;
-}
-.book-row.loaned {
   border-color: #F97316;
   border-width: 2px;
 }

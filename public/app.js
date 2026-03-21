@@ -4,7 +4,6 @@
 
 // ---- STATE ----
 const state = {
-  view: 'grid',        // 'grid' | 'list'
   search: '',
   sort: 'name-asc',   // 'name-asc' | 'name-desc' | 'author-asc' | 'author-desc' | 'location'
   filter: { cabinetId: null, shelfId: null, rowId: null, layerId: null, owner: null },
@@ -414,34 +413,6 @@ function renderDuplicateCard(books) {
   </div>`;
 }
 
-function renderDuplicateRow(books) {
-  const copies = books.map((book, i) => {
-    const loc    = getLocationLabel(book);
-    const badges = loc.map(l => `<span class="location-badge">${esc(l)}</span>`).join('');
-    const row    = book.rowId ? getRow(book.rowId) : null;
-    const imgBtn = row && row.image
-      ? `<button class="btn-shelf-img" data-action="view-row-img" data-row-id="${book.rowId}" title="צפה בתמונת הטור">📷</button>`
-      : '';
-    return `<div class="duplicate-copy">
-      <span class="duplicate-copy-label">עותק ${i + 1}</span>
-      <div class="book-row-location">${badges || '<span class="location-badge" style="opacity:.5">ללא מיקום</span>'}${imgBtn}</div>
-      <div class="book-row-actions">
-        <button class="btn-card-edit" data-action="edit" data-id="${book.id}">✏️</button>
-        <button class="btn-card-delete" data-action="delete" data-id="${book.id}">🗑️</button>
-      </div>
-    </div>`;
-  }).join('');
-  return `<div class="book-row duplicate-row">
-    <div class="book-row-main">
-      <div class="duplicate-badge" style="margin-bottom:4px">⚠️ ספר כפול (${books.length} עותקים)</div>
-      <div class="book-card-top">
-        <span class="book-card-title">${esc(books[0].name)}</span>
-        <button class="btn-author-filter" data-action="filter-author" data-author="${esc(books[0].author)}">${esc(books[0].author)}</button>
-      </div>
-      ${copies}
-    </div>
-  </div>`;
-}
 
 // ---- Books ----
 function renderBooks() {
@@ -463,7 +434,7 @@ function renderBooks() {
   }
 
   empty.classList.add('hidden');
-  container.className = state.view === 'grid' ? 'books-grid' : 'books-list';
+  container.className = 'books-grid';
 
   // Build duplicate map based on books visible after filtering
   const allDuplicateGroups = getDuplicateGroups();
@@ -472,7 +443,7 @@ function renderBooks() {
   const secondaryIds = new Set(); // IDs to skip (shown via primary)
   for (const group of allDuplicateGroups) {
     const visibleCopies = group.filter(b => bookIdSet.has(b.id));
-    if (visibleCopies.length < 2) continue; // only one copy visible → show normally
+    if (visibleCopies.length < 2) continue;
     const primary = visibleCopies[0];
     for (const book of visibleCopies) {
       duplicateMap.set(book.id, visibleCopies);
@@ -481,20 +452,12 @@ function renderBooks() {
   }
 
   const displayBooks = books.filter(b => !secondaryIds.has(b.id));
-
   const loanedBookIds = new Set(db.loans.map(l => l.bookId));
 
-  if (state.view === 'grid') {
-    container.innerHTML = displayBooks.map(book => {
-      const group = duplicateMap.get(book.id);
-      return group ? renderDuplicateCard(group) : renderBookCard(book, loanedBookIds.has(book.id));
-    }).join('');
-  } else {
-    container.innerHTML = displayBooks.map(book => {
-      const group = duplicateMap.get(book.id);
-      return group ? renderDuplicateRow(group) : renderBookRow(book, loanedBookIds.has(book.id));
-    }).join('');
-  }
+  container.innerHTML = displayBooks.map(book => {
+    const group = duplicateMap.get(book.id);
+    return group ? renderDuplicateCard(group) : renderBookCard(book, loanedBookIds.has(book.id));
+  }).join('');
 }
 
 function renderBookCard(book, isLoaned = false) {
@@ -521,31 +484,6 @@ function renderBookCard(book, isLoaned = false) {
   </div>`;
 }
 
-function renderBookRow(book, isLoaned = false) {
-  const loc = getLocationLabel(book);
-  const badges = loc.map(l => `<span class="location-badge">${esc(l)}</span>`).join('');
-  const row    = book.rowId ? getRow(book.rowId) : null;
-  const imgBtn = row && row.image
-    ? `<button class="btn-shelf-img" data-action="view-row-img" data-row-id="${book.rowId}" title="צפה בתמונת הטור">📷</button>`
-    : '';
-  const seriesLabel2 = book.series ? (book.seriesNumber ? `${esc(book.series)} #${esc(book.seriesNumber)}` : esc(book.series)) : '';
-  const seriesHtml = seriesLabel2
-    ? `<button class="btn-series-filter" data-action="filter-series" data-series="${esc(book.series)}" style="margin-bottom:2px">📚 ${seriesLabel2}</button>`
-    : '';
-  const notesIcon = book.notes ? `<span title="יש הערות">💬</span>` : '';
-  const loanBadge = isLoaned ? `<span class="loan-badge" style="margin-bottom:2px">📤 מושאל</span>` : '';
-  return `<div class="book-row${isLoaned ? ' loaned' : ''}" data-action="open-detail" data-id="${book.id}" style="cursor:pointer">
-    <div class="book-row-main">
-      <div class="book-card-top">
-        <span class="book-card-title">${esc(book.name)}</span>
-        <button class="btn-author-filter" data-action="filter-author" data-author="${esc(book.author)}">${esc(book.author)}</button>
-      </div>
-      ${seriesHtml}
-      ${loanBadge}
-      <div class="book-row-location">${badges || '<span class="location-badge" style="opacity:.5">ללא מיקום</span>'}${imgBtn}${notesIcon}</div>
-    </div>
-  </div>`;
-}
 
 function openBookDetailModal(id) {
   const book = db.books.find(b => b.id === id);
@@ -1297,9 +1235,10 @@ function renderLoansPage() {
 
 function openLoanModal(bookId = null) {
   loanSelectedBookId = bookId;
-  document.getElementById('loanBorrower').value          = '';
-  document.getElementById('loanPhone').value             = '';
-  document.getElementById('loanDate').value              = new Date().toISOString().split('T')[0];
+  document.getElementById('loanBorrower').value            = '';
+  document.getElementById('loanPhone').value               = '';
+  document.getElementById('loanDate').value                = new Date().toISOString().split('T')[0];
+  document.getElementById('loanNotes').value               = '';
   document.getElementById('loanBorrowerError').textContent = '';
   document.getElementById('loanBookError').textContent   = '';
   document.getElementById('loanBookInput').value         = '';
@@ -1325,6 +1264,7 @@ async function saveLoan() {
   const borrower = document.getElementById('loanBorrower').value.trim();
   const phone    = document.getElementById('loanPhone').value.trim();
   const date     = document.getElementById('loanDate').value;
+  const notes    = document.getElementById('loanNotes').value.trim();
 
   let valid = true;
   document.getElementById('loanBorrowerError').textContent = '';
@@ -1336,7 +1276,7 @@ async function saveLoan() {
 
   showLoadingOverlay(true);
   try {
-    const result = await apiFetch('POST', '/api/loans', { bookId: loanSelectedBookId, borrower, phone, date });
+    const result = await apiFetch('POST', '/api/loans', { bookId: loanSelectedBookId, borrower, phone, date, notes });
     db.loans.push(result);
     closeModal('loanModal');
     renderLoansPage();
@@ -1382,6 +1322,10 @@ function openLoanDetailModal(loanId) {
     ${loan.date ? `<div class="book-detail-field">
       <span class="book-detail-label">תאריך השאלה</span>
       <div>${esc(loan.date)}</div>
+    </div>` : ''}
+    ${loan.notes ? `<div class="book-detail-field">
+      <span class="book-detail-label">💬 הערות</span>
+      <div style="white-space:pre-wrap">${esc(loan.notes)}</div>
     </div>` : ''}
   `;
   openModal('loanDetailModal');
@@ -1430,9 +1374,10 @@ function renderWishlistPage() {
     return `
     <div class="wishlist-card ${w.bought ? 'bought' : ''}">
       <div class="wishlist-card-info">
-        <div class="wishlist-card-name">${esc(w.name)}</div>
-        ${w.author   ? `<div class="wishlist-card-author">${esc(w.author)}</div>` : ''}
+        <div class="wishlist-card-name">${esc(w.name)}${w.notes ? ' 💬' : ''}</div>
+        ${w.author    ? `<div class="wishlist-card-author">${esc(w.author)}</div>` : ''}
         ${seriesLabel ? `<div class="wishlist-card-series">${seriesLabel}</div>` : ''}
+        ${w.notes     ? `<div class="wishlist-card-notes" style="font-size:.82rem;color:var(--color-muted);margin-top:4px;white-space:pre-wrap">${esc(w.notes)}</div>` : ''}
       </div>
       <div class="wishlist-card-actions">
         ${!w.bought
@@ -1449,6 +1394,7 @@ function openWishlistAddModal() {
   document.getElementById('wishlistBookAuthor').value           = '';
   document.getElementById('wishlistBookSeries').value           = '';
   document.getElementById('wishlistBookSeriesNumber').value     = '';
+  document.getElementById('wishlistBookNotes').value            = '';
   document.getElementById('wishlistBookNameError').textContent  = '';
   openModal('wishlistAddModal');
   setTimeout(() => document.getElementById('wishlistBookName').focus(), 50);
@@ -1459,12 +1405,13 @@ async function saveWishlistItem() {
   const author       = document.getElementById('wishlistBookAuthor').value.trim();
   const series       = document.getElementById('wishlistBookSeries').value.trim();
   const seriesNumber = document.getElementById('wishlistBookSeriesNumber').value.trim();
+  const notes        = document.getElementById('wishlistBookNotes').value.trim();
   document.getElementById('wishlistBookNameError').textContent = '';
   if (!name) { document.getElementById('wishlistBookNameError').textContent = 'שדה חובה'; return; }
 
   showLoadingOverlay(true);
   try {
-    const result = await apiFetch('POST', '/api/wishlist', { name, author, series, seriesNumber });
+    const result = await apiFetch('POST', '/api/wishlist', { name, author, series, seriesNumber, notes });
     db.wishlist.push(result);
     closeModal('wishlistAddModal');
     renderWishlistPage();
@@ -1717,20 +1664,6 @@ document.addEventListener('DOMContentLoaded', () => {
     render();
   });
 
-  // View toggle
-  document.getElementById('viewGridBtn').addEventListener('click', () => {
-    state.view = 'grid';
-    document.getElementById('viewGridBtn').classList.add('active');
-    document.getElementById('viewListBtn').classList.remove('active');
-    render();
-  });
-
-  document.getElementById('viewListBtn').addEventListener('click', () => {
-    state.view = 'list';
-    document.getElementById('viewListBtn').classList.add('active');
-    document.getElementById('viewGridBtn').classList.remove('active');
-    render();
-  });
 
   // Manage locations
   document.getElementById('manageLocationsBtn').addEventListener('click', openLocationsModal);
