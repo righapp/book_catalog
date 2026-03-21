@@ -390,13 +390,9 @@ function renderDuplicateCard(books) {
   const copies = books.map((book, i) => {
     const loc    = getLocationLabel(book);
     const badges = loc.map(l => `<span class="location-badge">${esc(l)}</span>`).join('');
-    const row    = book.rowId ? getRow(book.rowId) : null;
-    const imgBtn = row && row.image
-      ? `<button class="btn-shelf-img" data-action="view-row-img" data-row-id="${book.rowId}" title="צפה בתמונת הטור">📷</button>`
-      : '';
     return `<div class="duplicate-copy">
       <span class="duplicate-copy-label">עותק ${i + 1}</span>
-      <div class="book-card-location">${badges || '<span class="location-badge" style="opacity:.5">ללא מיקום</span>'}${imgBtn}</div>
+      <div class="book-card-location">${badges || '<span class="location-badge" style="opacity:.5">ללא מיקום</span>'}</div>
       <div class="book-card-actions">
         <button class="btn-card-edit" data-action="edit" data-id="${book.id}">✏️ עריכה</button>
         <button class="btn-card-delete" data-action="delete" data-id="${book.id}">🗑️ מחק</button>
@@ -463,10 +459,6 @@ function renderBooks() {
 function renderBookCard(book, isLoaned = false) {
   const loc = getLocationLabel(book);
   const badges = loc.map(l => `<span class="location-badge">${esc(l)}</span>`).join('');
-  const row    = book.rowId ? getRow(book.rowId) : null;
-  const imgBtn = row && row.image
-    ? `<button class="btn-shelf-img" data-action="view-row-img" data-row-id="${book.rowId}" title="צפה בתמונת הטור">📷</button>`
-    : '';
   const seriesLabel = book.series ? (book.seriesNumber ? `${esc(book.series)} #${esc(book.seriesNumber)}` : esc(book.series)) : '';
   const seriesHtml = seriesLabel
     ? `<div class="book-card-series"><button class="btn-series-filter" data-action="filter-series" data-series="${esc(book.series)}">📚 ${seriesLabel}</button></div>`
@@ -480,7 +472,7 @@ function renderBookCard(book, isLoaned = false) {
     </div>
     ${seriesHtml}
     ${loanBadge}
-    <div class="book-card-location">${badges || '<span class="location-badge" style="opacity:.5">ללא מיקום</span>'}${imgBtn}${notesIcon}</div>
+    <div class="book-card-location">${badges || '<span class="location-badge" style="opacity:.5">ללא מיקום</span>'}${notesIcon}</div>
   </div>`;
 }
 
@@ -492,14 +484,6 @@ function openBookDetailModal(id) {
 
   const loc    = getLocationLabel(book);
   const badges = loc.map(l => `<span class="location-badge">${esc(l)}</span>`).join('');
-
-  const row    = book.rowId ? getRow(book.rowId) : null;
-  const imgHtml = row && row.image
-    ? `<div class="book-detail-img">
-        <img src="${row.image}" alt="תמונת הטור" style="max-width:100%;border-radius:var(--r-md);border:1px solid var(--color-border)">
-        <div style="font-size:.75rem;color:var(--color-muted);margin-top:6px">📷 תמונת הטור</div>
-      </div>`
-    : '';
 
   const seriesDetailLabel = book.series ? (book.seriesNumber ? `${esc(book.series)} #${esc(book.seriesNumber)}` : esc(book.series)) : '';
   const seriesHtml = book.series
@@ -541,7 +525,6 @@ function openBookDetailModal(id) {
     </div>
     ${notesHtml}
     ${loanHtml}
-    ${imgHtml}
   `;
 
   document.getElementById('bookDetailLoan').style.display = loan ? 'none' : '';
@@ -923,99 +906,6 @@ function openLocationsModal() {
   openModal('locationsModal');
 }
 
-// ---- Shelf Image ----
-let shelfImgTargetId = null;
-
-function compressImage(file, maxPx, quality) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = e => {
-      const img = new Image();
-      img.onload = () => {
-        const scale  = Math.min(1, maxPx / Math.max(img.width, img.height));
-        const w      = Math.round(img.width  * scale);
-        const h      = Math.round(img.height * scale);
-        const canvas = document.createElement('canvas');
-        canvas.width = w; canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', quality));
-      };
-      img.onerror = reject;
-      img.src = e.target.result;
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-function openShelfImgMgmt(rowId) {
-  const row = getRow(rowId);
-  if (!row) return;
-  shelfImgTargetId = rowId;
-  document.getElementById('shelfImgMgmtName').textContent = row.name;
-  const currentWrap = document.getElementById('shelfImgCurrentWrap');
-  const currentImg  = document.getElementById('shelfImgCurrent');
-  if (row.image) {
-    const valid = row.image.startsWith('data:image/') || row.image.startsWith('https://');
-    console.log(`[Image] פתיחת ניהול תמונה לטור ${rowId}: ${row.image.length} תווים, תקין: ${valid}`);
-    if (!valid) {
-      showToast('שגיאה: התמונה השמורה נראית פגומה או חתוכה בגיליון', 'error');
-    }
-    currentImg.src = row.image;
-    currentWrap.style.display = '';
-  } else {
-    currentWrap.style.display = 'none';
-  }
-  openModal('shelfImgMgmtModal');
-}
-
-async function uploadToCloudinary(base64) {
-  console.log(`[Cloudinary] שולח base64 להעלאה: ${base64.length} תווים`);
-  const result = await apiFetch('POST', '/api/upload', { base64, rowId: shelfImgTargetId });
-  console.log(`[Cloudinary] התקבל URL: ${result.url}`);
-  return result.url;
-}
-
-async function saveShelfImage(imageValue) {
-  showLoadingOverlay(true);
-  console.log(`[Image] לפני שמירה — ערך: ${imageValue ? imageValue.slice(0, 60) + '…' : '(מחיקה)'}`);
-  try {
-    await apiFetch('PUT', `/api/locations/${shelfImgTargetId}`, { image: imageValue });
-    console.log(`[Image] נשמר בהצלחה`);
-    const row = getRow(shelfImgTargetId);
-    if (row) row.image = imageValue;
-    const currentWrap = document.getElementById('shelfImgCurrentWrap');
-    const currentImg  = document.getElementById('shelfImgCurrent');
-    if (imageValue) {
-      currentImg.src = imageValue;
-      currentWrap.style.display = '';
-    } else {
-      currentImg.src = '';
-      currentWrap.style.display = 'none';
-    }
-    renderRowsList(parseInt(document.getElementById('newRowShelf').value) || null);
-    render();
-    showToast(imageValue ? 'התמונה נשמרה ✓' : 'התמונה נמחקה ✓', 'success');
-  } catch (e) {
-    showToast('שגיאה: ' + e.message, 'error');
-  } finally {
-    showLoadingOverlay(false);
-  }
-}
-
-function openShelfImgViewer(rowId) {
-  const row = getRow(rowId);
-  if (!row || !row.image) return;
-  const valid = row.image.startsWith('data:image/') || row.image.startsWith('https://');
-  console.log(`[Image] פתיחת תצוגת תמונה לטור ${rowId}: ${row.image.length} תווים, תקין: ${valid}`);
-  if (!valid) {
-    showToast('שגיאה: התמונה השמורה נראית פגומה או חתוכה בגיליון', 'error');
-    return;
-  }
-  document.getElementById('shelfImgViewTitle').textContent = row.name;
-  document.getElementById('shelfImgViewImg').src = row.image;
-  openModal('shelfImgViewModal');
-}
 
 function renderLocationsManager() {
   // Populate cabinet selects in shelves + rows tabs
@@ -1177,7 +1067,6 @@ function renderRowsList(filterShelfId) {
       <div class="loc-item-meta">${cab ? cab.name + ' / ' : ''}${shelf ? shelf.name : ''} · ${booksCount} ספרים</div></div>
       <div style="display:flex;gap:6px;align-items:center">
         <button class="loc-item-rename" data-action="rename" data-id="${r.id}" data-type="row" title="שנה שם">✏️</button>
-        <button class="loc-item-img-btn${r.image ? ' has-image' : ''}" data-action="row-img" data-id="${r.id}" title="${r.image ? 'החלף תמונה' : 'הוסף תמונה'}">📷</button>
         <button class="loc-item-delete" data-action="del-row" data-id="${r.id}">מחק</button>
       </div>
       <div class="loc-name-edit-row" id="nameEditRow_${r.id}">
@@ -1760,7 +1649,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (el.dataset.action === 'open-detail')   openBookDetailModal(parseInt(el.dataset.id));
     if (el.dataset.action === 'edit')          openEditBookModal(parseInt(el.dataset.id));
     if (el.dataset.action === 'delete')        openDeleteModal(parseInt(el.dataset.id));
-    if (el.dataset.action === 'view-row-img')  openShelfImgViewer(parseInt(el.dataset.rowId));
     if (el.dataset.action === 'filter-series') {
       const series = el.dataset.series;
       state.seriesFilter = state.seriesFilter === series ? null : series;
@@ -2302,10 +2190,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!btn) return;
       const id = parseInt(btn.dataset.id);
 
-      if (btn.dataset.action === 'row-img') {
-        openShelfImgMgmt(id);
-        return;
-      }
 
       if (btn.dataset.action === 'rename') {
         const nameRow = document.getElementById(`nameEditRow_${id}`);
@@ -2410,47 +2294,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // ---- Shelf Image Management Modal ----
-  document.getElementById('shelfImgMgmtClose').addEventListener('click',  () => closeModal('shelfImgMgmtModal'));
-  document.getElementById('shelfImgMgmtClose2').addEventListener('click', () => closeModal('shelfImgMgmtModal'));
-
-  document.getElementById('shelfImgPickBtn').addEventListener('click', () => {
-    document.getElementById('shelfImgFileInput').value = '';
-    document.getElementById('shelfImgFileInput').click();
-  });
-
-  document.getElementById('shelfImgFileInput').addEventListener('change', async e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    try {
-      let base64 = await compressImage(file, 800, 0.85);
-      console.log(`[Image] לאחר דחיסה 800px/0.85: ${base64.length} תווים`);
-      if (base64.length > 45000) {
-        base64 = await compressImage(file, 500, 0.75);
-        console.log(`[Image] לאחר דחיסה 500px/0.75: ${base64.length} תווים`);
-      }
-      if (base64.length > 45000) {
-        base64 = await compressImage(file, 300, 0.65);
-        console.log(`[Image] לאחר דחיסה 300px/0.65: ${base64.length} תווים`);
-      }
-      if (base64.length > 45000) { showToast('התמונה גדולה מדי גם לאחר דחיסה', 'error'); return; }
-      const imageUrl = await uploadToCloudinary(base64);
-      await saveShelfImage(imageUrl);
-    } catch {
-      showToast('שגיאה בעיבוד התמונה', 'error');
-    }
-  });
-
-  document.getElementById('shelfImgDeleteBtn').addEventListener('click', async () => {
-    await saveShelfImage('');
-  });
-
-  // ---- Shelf Image Viewer Modal ----
-  document.getElementById('shelfImgViewClose').addEventListener('click',  () => closeModal('shelfImgViewModal'));
-  document.getElementById('shelfImgViewClose2').addEventListener('click', () => closeModal('shelfImgViewModal'));
-
   // Close modal on overlay click
-  ['bookModal', 'deleteModal', 'locationsModal', 'bookDetailModal', 'shelfImgMgmtModal', 'shelfImgViewModal', 'loanModal', 'loanDetailModal', 'wishlistAddModal'].forEach(id => {
+  ['bookModal', 'deleteModal', 'locationsModal', 'bookDetailModal', 'loanModal', 'loanDetailModal', 'wishlistAddModal'].forEach(id => {
     document.getElementById(id).addEventListener('click', e => {
       if (e.target === document.getElementById(id)) closeModal(id);
     });
@@ -2587,7 +2432,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('importModalConfirm').addEventListener('click', confirmImport);
 
   // ---- Back button: close open modal/sidebar instead of leaving app ----
-  const ALL_MODALS = ['bookModal', 'deleteModal', 'locationsModal', 'bookDetailModal', 'shelfImgMgmtModal', 'shelfImgViewModal', 'loanModal', 'loanDetailModal', 'wishlistAddModal'];
+  const ALL_MODALS = ['bookModal', 'deleteModal', 'locationsModal', 'bookDetailModal', 'loanModal', 'loanDetailModal', 'wishlistAddModal'];
   window.addEventListener('popstate', () => {
     if (_historyBack) { _historyBack = false; return; }
     const openId = ALL_MODALS.find(id => document.getElementById(id).classList.contains('open'));

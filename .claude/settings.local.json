@@ -9,7 +9,10 @@
       "Bash(pkill -f \"node server.js\" 2>/dev/null; echo \"done\")",
       "Bash(node --check \"C:/Users/shlom/claude_projects/book-catalog/server.js\")",
       "Bash(node --check \"C:/Users/shlom/claude_projects/book-catalog/public/app.js\")",
-      "Bash(node --check server.js)"
+      "Bash(node --check server.js)",
+      "Bash(grep \"innerHTML\\\\|template\\\\|html\\\\`\\\\|html =\")",
+      "Bash(grep -n \"document.body.innerHTML\\\\|document.getElementById\\(''''app''''\\)\\\\|innerHTML = \\\\`\\\\|innerHTML=\\\\`\" public/app.js)",
+      "Bash(npm uninstall:*)"
     ]
   }
 }
