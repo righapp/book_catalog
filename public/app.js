@@ -10,6 +10,7 @@ const state = {
   seriesFilter: null,  // string | null
   authorFilter: null,  // string | null
   loanedOnly: false,
+  duplicatesOnly: false,
   mobileTab: 'catalog', // 'catalog' | 'manage' | 'loans' | 'wishlist'
   editingBookId: null,
   deletingBookId: null,
@@ -126,9 +127,11 @@ function sortBooks(books) {
 
 // ---- Filter & Search ----
 function getFilteredBooks() {
-  const loanedBookIds = state.loanedOnly ? new Set(db.loans.map(l => l.bookId)) : null;
+  const loanedBookIds    = state.loanedOnly    ? new Set(db.loans.map(l => l.bookId)) : null;
+  const duplicateBookIds = state.duplicatesOnly ? new Set(getDuplicateGroups().flatMap(g => g.map(b => b.id))) : null;
   return db.books.filter(book => {
-    if (loanedBookIds && !loanedBookIds.has(book.id)) return false;
+    if (loanedBookIds    && !loanedBookIds.has(book.id))    return false;
+    if (duplicateBookIds && !duplicateBookIds.has(book.id)) return false;
     if (state.filter.owner) {
       const cab = book.cabinetId ? getCabinet(book.cabinetId) : null;
       const bookOwner = (cab && cab.owner) ? cab.owner.trim().toLowerCase() : '';
@@ -201,7 +204,7 @@ function renderStats() {
 
   // Filter badge
   const hasFilter = state.filter.cabinetId || state.filter.shelfId || state.filter.rowId ||
-                    state.filter.layerId || state.filter.owner || state.search || state.seriesFilter || state.authorFilter || state.loanedOnly;
+                    state.filter.layerId || state.filter.owner || state.search || state.seriesFilter || state.authorFilter || state.loanedOnly || state.duplicatesOnly;
   const badge = document.getElementById('filterBadge');
   if (hasFilter) { badge.textContent = ''; badge.classList.add('visible'); }
   else           { badge.classList.remove('visible'); }
@@ -285,16 +288,24 @@ function renderLocationTree() {
     ${ownerOptions}`;
   }
 
-  if (db.loans.length > 0) {
+  {
+    const dupCount = getDuplicateGroups().reduce((s, g) => s + g.length, 0);
+    const loanedRow = db.loans.length > 0
+      ? `<div class="tree-all ${state.loanedOnly ? 'active' : ''}" data-action="filter-loaned">
+          📤 ספרים מושאלים
+          <span class="tree-count">${db.loans.length}</span>
+        </div>`
+      : '';
     html += `<div class="tree-section-title">סינון מיוחד</div>
-    <div class="tree-all ${state.loanedOnly ? 'active' : ''}" data-action="filter-loaned">
-      📤 ספרים מושאלים
-      <span class="tree-count">${db.loans.length}</span>
+    ${loanedRow}
+    <div class="tree-all ${state.duplicatesOnly ? 'active' : ''}" data-action="filter-duplicates">
+      ⚠️ ספרים כפולים
+      <span class="tree-count">${dupCount}</span>
     </div>`;
   }
 
   html += `<div class="tree-section-title">סינון לפי מיקום</div>
-  <div class="tree-all ${!f.cabinetId && !f.shelfId && !f.rowId && !f.layerId && !f.owner && !state.loanedOnly ? 'active' : ''}" data-action="filter-all">
+  <div class="tree-all ${!f.cabinetId && !f.shelfId && !f.rowId && !f.layerId && !f.owner && !state.loanedOnly && !state.duplicatesOnly ? 'active' : ''}" data-action="filter-all">
     📚 כל הספרים
     <span class="tree-count">${db.books.length}</span>
   </div>`;
@@ -1582,7 +1593,8 @@ document.addEventListener('DOMContentLoaded', () => {
     state.filter = { cabinetId: null, shelfId: null, rowId: null, layerId: null, owner: null };
     state.seriesFilter = null;
     state.authorFilter = null;
-    state.loanedOnly   = false;
+    state.loanedOnly     = false;
+    state.duplicatesOnly = false;
     render();
   });
 
@@ -1601,9 +1613,12 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } else if (action === 'filter-loaned') {
       state.loanedOnly = !state.loanedOnly;
+    } else if (action === 'filter-duplicates') {
+      state.duplicatesOnly = !state.duplicatesOnly;
     } else if (action === 'filter-all') {
       state.filter = { cabinetId: null, shelfId: null, rowId: null, layerId: null, owner: null };
-      state.loanedOnly = false;
+      state.loanedOnly    = false;
+      state.duplicatesOnly = false;
     } else if (action === 'filter-cabinet') {
       const id = parseInt(el.dataset.id);
       if (state.filter.cabinetId === id && !state.filter.shelfId) {
