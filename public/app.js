@@ -20,10 +20,10 @@ const state = {
 };
 
 const SORT_LABELS = {
-  'name-asc':   'שם ספר (א→ת)',
-  'name-desc':  'שם ספר (ת→א)',
-  'author-asc': 'שם סופר (א→ת)',
-  'author-desc':'שם סופר (ת→א)',
+  'name-asc':   'שם ספר (א←ת)',
+  'name-desc':  'שם ספר (ת←א)',
+  'author-asc': 'שם סופר (א←ת)',
+  'author-desc':'שם סופר (ת←א)',
   'location':   'מיקום',
 };
 
@@ -220,8 +220,9 @@ function renderStats() {
   const hasFilter = state.filter.cabinetId || state.filter.shelfId || state.filter.rowId ||
                     state.filter.layerId || state.filter.owner || state.search || state.seriesFilter || state.authorFilter || state.loanedOnly || state.duplicatesOnly;
   const badge = document.getElementById('filterBadge');
-  if (hasFilter) { badge.textContent = ''; badge.classList.add('visible'); }
-  else           { badge.classList.remove('visible'); }
+  const clearX = document.getElementById('filterClearX');
+  if (hasFilter) { badge.textContent = ''; badge.classList.add('visible'); clearX.classList.add('visible'); }
+  else           { badge.classList.remove('visible'); clearX.classList.remove('visible'); }
 }
 
 // ---- Mobile Tab Switching ----
@@ -2431,6 +2432,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ---- Sidebar toggle (mobile) ----
   document.getElementById('filterToggleBtn').addEventListener('click', openSidebar);
+  document.getElementById('filterClearX').addEventListener('click', e => {
+    e.stopPropagation();
+    state.filter = { cabinetId: null, shelfId: null, rowId: null, layerId: null, owner: null };
+    state.seriesFilter  = null;
+    state.authorFilter  = null;
+    state.loanedOnly    = false;
+    state.duplicatesOnly = false;
+    state.search = '';
+    document.getElementById('searchInput').value = '';
+    document.getElementById('searchClear').classList.remove('visible');
+    render();
+  });
   document.getElementById('sidebarCloseBtn').addEventListener('click', closeSidebar);
   document.getElementById('sidebarDoneBtn').addEventListener('click', closeSidebar);
   document.getElementById('sidebarBackdrop').addEventListener('click', closeSidebar);

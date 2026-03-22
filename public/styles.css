@@ -376,6 +376,17 @@ button, select, input[type="text"] { touch-action: manipulation; }
 }
 .filter-badge.visible { display: inline-flex; }
 
+.filter-clear-x {
+  display: none;
+  font-size: .7rem;
+  opacity: 0.5;
+  line-height: 1;
+  transition: opacity var(--t);
+  flex-shrink: 0;
+}
+.filter-clear-x:hover { opacity: 1; }
+.filter-clear-x.visible { display: inline; }
+
 /* ============================================================
    SORT DROPDOWN
    ============================================================ */
