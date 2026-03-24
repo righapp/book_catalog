@@ -436,7 +436,27 @@ function getSameOwnerDuplicateGroups() {
   return Object.values(groups).filter(g => g.length > 1 && !g.every(b => b.approvedDuplicate));
 }
 
-// Legacy alias used by sidebar count
+// Same owner+name+author, ALL approved → shared card (no red)
+function getApprovedSameOwnerGroups() {
+  const crossKeys = new Set(
+    getCrossOwnerGroups().map(g =>
+      `${g[0].name.toLowerCase().trim()}|${g[0].author.toLowerCase().trim()}`
+    )
+  );
+  const groups = {};
+  for (const book of db.books) {
+    const ownerGroup = getOwnerGroup(book);
+    if (!ownerGroup) continue;
+    const nameAuthorKey = `${book.name.toLowerCase().trim()}|${book.author.toLowerCase().trim()}`;
+    if (crossKeys.has(nameAuthorKey)) continue;
+    const key = `${ownerGroup}|${nameAuthorKey}`;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(book);
+  }
+  return Object.values(groups).filter(g => g.length > 1 && g.every(b => b.approvedDuplicate));
+}
+
+// Legacy alias used by sidebar count (only unapproved duplicates)
 function getDuplicateGroups() {
   return [...getCrossOwnerGroups(), ...getSameOwnerDuplicateGroups()];
 }
@@ -469,9 +489,15 @@ function renderDuplicateCard(books) {
   </div>`;
 }
 
-// Different owners, same name+author → merged card, no red
+// Different owners (or approved same-owner) → merged card, no red, no edit/delete buttons
 function renderSharedCard(books) {
-  const copies = books.map((book, i) => {
+  const ids = books.map(b => b.id).join(',');
+  const first = books[0];
+  const seriesLabel = first.series ? (first.seriesNumber ? `${esc(first.series)} #${esc(first.seriesNumber)}` : esc(first.series)) : '';
+  const seriesHtml = seriesLabel
+    ? `<div class="book-card-series"><button class="btn-series-filter" data-action="filter-series" data-series="${esc(first.series)}">📚 ${seriesLabel}</button></div>`
+    : '';
+  const copies = books.map(book => {
     const loc    = getLocationLabel(book);
     const badges = loc.map(l => `<span class="location-badge">${esc(l)}</span>`).join('');
     const owner  = getOwnerGroup(book);
@@ -479,17 +505,14 @@ function renderSharedCard(books) {
     return `<div class="duplicate-copy">
       ${ownerLabel}
       <div class="book-card-location">${badges || '<span class="location-badge" style="opacity:.5">ללא מיקום</span>'}</div>
-      <div class="book-card-actions">
-        <button class="btn-card-edit" data-action="edit" data-id="${book.id}">✏️ עריכה</button>
-        <button class="btn-card-delete" data-action="delete" data-id="${book.id}">🗑️ מחק</button>
-      </div>
     </div>`;
   }).join('');
-  return `<div class="book-card">
+  return `<div class="book-card" data-action="open-shared-detail" data-ids="${ids}">
     <div class="book-card-top">
-      <span class="book-card-title">${esc(books[0].name)}</span>
-      <div class="book-card-authors">${books[0].author.split(',').map(a => a.trim()).filter(Boolean).map(a => `<button class="btn-author-filter" data-action="filter-author" data-author="${esc(a)}">${esc(a)}</button>`).join(', ')}</div>
+      <span class="book-card-title">${esc(first.name)}</span>
+      <div class="book-card-authors">${first.author.split(',').map(a => a.trim()).filter(Boolean).map(a => `<button class="btn-author-filter" data-action="filter-author" data-author="${esc(a)}">${esc(a)}</button>`).join(', ')}</div>
     </div>
+    ${seriesHtml}
     ${copies}
   </div>`;
 }
@@ -536,13 +559,15 @@ function renderBooks() {
 
   const { map: crossMap,     secondary: crossSecondary }     = buildGroupMap(getCrossOwnerGroups());
   const { map: sameOwnerMap, secondary: sameOwnerSecondary } = buildGroupMap(getSameOwnerDuplicateGroups());
+  const { map: approvedMap,  secondary: approvedSecondary }  = buildGroupMap(getApprovedSameOwnerGroups());
 
-  const secondaryIds = new Set([...crossSecondary, ...sameOwnerSecondary]);
+  const secondaryIds = new Set([...crossSecondary, ...sameOwnerSecondary, ...approvedSecondary]);
   const displayBooks = books.filter(b => !secondaryIds.has(b.id));
   const loanedBookIds = new Set(db.loans.map(l => l.bookId));
 
   container.innerHTML = displayBooks.map(book => {
     if (crossMap.has(book.id))     return renderSharedCard(crossMap.get(book.id));
+    if (approvedMap.has(book.id))  return renderSharedCard(approvedMap.get(book.id));
     if (sameOwnerMap.has(book.id)) return renderDuplicateCard(sameOwnerMap.get(book.id));
     return renderBookCard(book, loanedBookIds.has(book.id));
   }).join('');
@@ -621,9 +646,51 @@ function openBookDetailModal(id) {
     ${loanHtml}
   `;
 
-  document.getElementById('bookDetailLoan').style.display = loan ? 'none' : '';
+  document.getElementById('bookDetailEdit').style.display   = '';
+  document.getElementById('bookDetailDelete').style.display = '';
+  document.getElementById('bookDetailLoan').style.display   = loan ? 'none' : '';
   document.getElementById('bookDetailReturn').style.display = loan ? '' : 'none';
 
+  openModal('bookDetailModal');
+}
+
+function openSharedDetailModal(ids) {
+  const books = ids.map(id => db.books.find(b => b.id === id)).filter(Boolean);
+  if (!books.length) return;
+
+  const first = books[0];
+  const seriesDetailLabel = first.series ? (first.seriesNumber ? `${esc(first.series)} #${esc(first.seriesNumber)}` : esc(first.series)) : '';
+  const seriesHtml = first.series
+    ? `<div class="book-detail-field">
+        <span class="book-detail-label">סדרה</span>
+        <div><button class="btn-series-filter" data-action="filter-series" data-series="${esc(first.series)}" style="font-size:.9rem">📚 ${seriesDetailLabel}</button></div>
+      </div>`
+    : '';
+  const authorHtml = `<div class="book-detail-field">
+    <span class="book-detail-label">סופר</span>
+    <div>${first.author.split(',').map(a => a.trim()).filter(Boolean).map(a => `<button class="btn-author-filter" data-action="filter-author" data-author="${esc(a)}" style="font-size:.9rem">${esc(a)}</button>`).join(', ')}</div>
+  </div>`;
+  const copiesHtml = books.map((book, i) => {
+    const loc    = getLocationLabel(book);
+    const badges = loc.map(l => `<span class="location-badge">${esc(l)}</span>`).join('');
+    const owner  = getOwnerGroup(book);
+    const ownerLabel = owner ? ` — ${esc(owner)}` : '';
+    return `<div class="book-detail-field">
+      <span class="book-detail-label">עותק ${i + 1}${ownerLabel}</span>
+      <div class="book-card-location" style="margin-top:2px">${badges || '<span class="location-badge" style="opacity:.5">ללא מיקום</span>'}</div>
+      <div class="book-card-actions" style="margin-top:6px">
+        <button class="btn-card-edit" data-action="edit" data-id="${book.id}">✏️ עריכה</button>
+        <button class="btn-card-delete" data-action="delete" data-id="${book.id}">🗑️ מחק</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('bookDetailTitle').textContent = first.name;
+  document.getElementById('bookDetailBody').innerHTML = authorHtml + seriesHtml + copiesHtml;
+  document.getElementById('bookDetailLoan').style.display   = 'none';
+  document.getElementById('bookDetailReturn').style.display = 'none';
+  document.getElementById('bookDetailEdit').style.display   = 'none';
+  document.getElementById('bookDetailDelete').style.display = 'none';
   openModal('bookDetailModal');
 }
 
@@ -1810,6 +1877,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       render();
     }
+    if (el.dataset.action === 'open-shared-detail') {
+      const ids = el.dataset.ids.split(',').map(Number);
+      openSharedDetailModal(ids);
+      return;
+    }
     if (el.dataset.action === 'approve-duplicate') {
       const ids = el.dataset.ids.split(',').map(Number);
       showLoadingOverlay(true);
@@ -1867,6 +1939,16 @@ document.addEventListener('DOMContentLoaded', () => {
       clearAllFiltersAndSearch();
       state.authorFilter = el.dataset.author;
       render();
+    }
+    if (el.dataset.action === 'edit') {
+      const id = parseInt(el.dataset.id);
+      closeModal('bookDetailModal');
+      openEditBookModal(id);
+    }
+    if (el.dataset.action === 'delete') {
+      const id = parseInt(el.dataset.id);
+      closeModal('bookDetailModal');
+      openDeleteModal(id);
     }
   });
 
