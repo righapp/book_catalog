@@ -107,16 +107,17 @@ function parseBooks(rows) {
   if (rows.length <= 1) return [];
   return rows.slice(1)
     .map(r => ({
-      id:        parseInt(r[0]),
-      name:      r[1] || '',
-      author:    r[2] || '',
-      cabinetId: parseInt(r[3]) || null,
-      shelfId:   parseInt(r[4]) || null,
-      rowId:     parseInt(r[5]) || null,
-      layerId:      parseInt(r[6]) || null,
-      notes:        r[7] || '',
-      series:       r[8] || '',
-      seriesNumber: r[9] || '',
+      id:               parseInt(r[0]),
+      name:             r[1] || '',
+      author:           r[2] || '',
+      cabinetId:        parseInt(r[3]) || null,
+      shelfId:          parseInt(r[4]) || null,
+      rowId:            parseInt(r[5]) || null,
+      layerId:          parseInt(r[6]) || null,
+      notes:            r[7] || '',
+      series:           r[8] || '',
+      seriesNumber:     r[9] || '',
+      approvedDuplicate: r[10] === 'TRUE',
     }))
     .filter(b => b.id && b.name);
 }
@@ -192,7 +193,7 @@ async function ensureSheets() {
   // Add headers if sheets are empty
   const booksRows = await sheetGet(BOOKS_SHEET);
   if (!booksRows.length) {
-    await sheetAppend(BOOKS_SHEET, [['id', 'שם ספר', 'שם סופר', 'ארון_id', 'מדף_id', 'טור_id', 'שכבה_id', 'הערות', 'סדרה', 'מספר_בסדרה']], 'A:J');
+    await sheetAppend(BOOKS_SHEET, [['id', 'שם ספר', 'שם סופר', 'ארון_id', 'מדף_id', 'טור_id', 'שכבה_id', 'הערות', 'סדרה', 'מספר_בסדרה', 'כפול_מאושר']], 'A:K');
   }
   const locRows = await sheetGet(LOC_SHEET);
   if (!locRows.length) {
@@ -227,8 +228,8 @@ app.post('/api/books', async (req, res) => {
     const { name, author, cabinetId, shelfId, rowId, layerId, notes, series, seriesNumber } = req.body;
     const rows   = await sheetGet(BOOKS_SHEET);
     const nextId = maxId(parseBooks(rows)) + 1;
-    await sheetAppend(BOOKS_SHEET, [[nextId, name, author, cabinetId ?? '', shelfId ?? '', rowId ?? '', layerId ?? '', notes ?? '', series ?? '', seriesNumber ?? '']], 'A:J');
-    res.json({ id: nextId, name, author, cabinetId, shelfId, rowId, layerId, notes: notes ?? '', series: series ?? '', seriesNumber: seriesNumber ?? '' });
+    await sheetAppend(BOOKS_SHEET, [[nextId, name, author, cabinetId ?? '', shelfId ?? '', rowId ?? '', layerId ?? '', notes ?? '', series ?? '', seriesNumber ?? '', '']], 'A:K');
+    res.json({ id: nextId, name, author, cabinetId, shelfId, rowId, layerId, notes: notes ?? '', series: series ?? '', seriesNumber: seriesNumber ?? '', approvedDuplicate: false });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -240,7 +241,8 @@ app.put('/api/books/:id', async (req, res) => {
     const idx      = rows.findIndex((r, i) => i > 0 && parseInt(r[0]) === targetId);
     if (idx === -1) return res.status(404).json({ error: 'לא נמצא' });
     const { name, author, cabinetId, shelfId, rowId, layerId, notes, series, seriesNumber } = req.body;
-    await sheetUpdate(BOOKS_SHEET, idx + 1, [targetId, name, author, cabinetId ?? '', shelfId ?? '', rowId ?? '', layerId ?? '', notes ?? '', series ?? '', seriesNumber ?? '']);
+    const existingApproved = (rows[idx][10] === 'TRUE') ? 'TRUE' : '';
+    await sheetUpdate(BOOKS_SHEET, idx + 1, [targetId, name, author, cabinetId ?? '', shelfId ?? '', rowId ?? '', layerId ?? '', notes ?? '', series ?? '', seriesNumber ?? '', existingApproved]);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -253,6 +255,24 @@ app.delete('/api/books/:id', async (req, res) => {
     const idx      = rows.findIndex((r, i) => i > 0 && parseInt(r[0]) === targetId);
     if (idx === -1) return res.status(404).json({ error: 'לא נמצא' });
     await sheetDeleteRow(BOOKS_SHEET, idx);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PATCH /api/books/approve-duplicate  – mark a group of books as approved duplicates
+app.patch('/api/books/approve-duplicate', async (req, res) => {
+  try {
+    const ids  = req.body.ids || [];
+    const rows = await sheetGet(BOOKS_SHEET);
+    for (const targetId of ids) {
+      const idx = rows.findIndex((r, i) => i > 0 && parseInt(r[0]) === targetId);
+      if (idx === -1) continue;
+      const r = rows[idx];
+      await sheetUpdate(BOOKS_SHEET, idx + 1, [
+        r[0], r[1], r[2], r[3] ?? '', r[4] ?? '', r[5] ?? '', r[6] ?? '',
+        r[7] ?? '', r[8] ?? '', r[9] ?? '', 'TRUE',
+      ]);
+    }
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

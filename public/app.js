@@ -128,7 +128,9 @@ function sortBooks(books) {
 // ---- Filter & Search ----
 function getFilteredBooks() {
   const loanedBookIds    = state.loanedOnly    ? new Set(db.loans.map(l => l.bookId)) : null;
-  const duplicateBookIds = state.duplicatesOnly ? new Set(getDuplicateGroups().flatMap(g => g.map(b => b.id))) : null;
+  const duplicateBookIds = state.duplicatesOnly
+    ? new Set([...getCrossOwnerGroups(), ...getSameOwnerDuplicateGroups()].flatMap(g => g.map(b => b.id)))
+    : null;
   return db.books.filter(book => {
     if (loanedBookIds    && !loanedBookIds.has(book.id))    return false;
     if (duplicateBookIds && !duplicateBookIds.has(book.id)) return false;
@@ -400,19 +402,48 @@ function getOwnerGroup(book) {
   return cab.owner.trim().toLowerCase();
 }
 
-function getDuplicateGroups() {
+// Books with same name+author spanning ≥2 distinct owners → merged card, no warning
+function getCrossOwnerGroups() {
   const groups = {};
   for (const book of db.books) {
-    const ownerGroup = getOwnerGroup(book);
-    if (!ownerGroup) continue; // only check books in cabinets with an owner
-    const key = `${ownerGroup}|${book.name.toLowerCase().trim()}|${book.author.toLowerCase().trim()}`;
+    const key = `${book.name.toLowerCase().trim()}|${book.author.toLowerCase().trim()}`;
     if (!groups[key]) groups[key] = [];
     groups[key].push(book);
   }
-  return Object.values(groups).filter(g => g.length > 1);
+  return Object.values(groups).filter(g => {
+    const owners = new Set(g.map(b => getOwnerGroup(b)).filter(Boolean));
+    return owners.size >= 2;
+  });
 }
 
+// Books with same owner+name+author (>1) AND not yet all approved → red card
+function getSameOwnerDuplicateGroups() {
+  const crossKeys = new Set(
+    getCrossOwnerGroups().map(g =>
+      `${g[0].name.toLowerCase().trim()}|${g[0].author.toLowerCase().trim()}`
+    )
+  );
+  const groups = {};
+  for (const book of db.books) {
+    const ownerGroup = getOwnerGroup(book);
+    if (!ownerGroup) continue;
+    const nameAuthorKey = `${book.name.toLowerCase().trim()}|${book.author.toLowerCase().trim()}`;
+    if (crossKeys.has(nameAuthorKey)) continue; // handled by cross-owner
+    const key = `${ownerGroup}|${nameAuthorKey}`;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(book);
+  }
+  return Object.values(groups).filter(g => g.length > 1 && !g.every(b => b.approvedDuplicate));
+}
+
+// Legacy alias used by sidebar count
+function getDuplicateGroups() {
+  return [...getCrossOwnerGroups(), ...getSameOwnerDuplicateGroups()];
+}
+
+// Same owner, same name+author → red card with approve button
 function renderDuplicateCard(books) {
+  const ids = books.map(b => b.id).join(',');
   const copies = books.map((book, i) => {
     const loc    = getLocationLabel(book);
     const badges = loc.map(l => `<span class="location-badge">${esc(l)}</span>`).join('');
@@ -426,7 +457,35 @@ function renderDuplicateCard(books) {
     </div>`;
   }).join('');
   return `<div class="book-card duplicate-card">
-    <div class="duplicate-badge">⚠️ ספר כפול (${books.length} עותקים)</div>
+    <div class="duplicate-badge-row">
+      <div class="duplicate-badge">⚠️ ספר כפול (${books.length} עותקים)</div>
+      <button class="btn-approve-duplicate" data-action="approve-duplicate" data-ids="${ids}">✓ בסדר</button>
+    </div>
+    <div class="book-card-top">
+      <span class="book-card-title">${esc(books[0].name)}</span>
+      <div class="book-card-authors">${books[0].author.split(',').map(a => a.trim()).filter(Boolean).map(a => `<button class="btn-author-filter" data-action="filter-author" data-author="${esc(a)}">${esc(a)}</button>`).join(', ')}</div>
+    </div>
+    ${copies}
+  </div>`;
+}
+
+// Different owners, same name+author → merged card, no red
+function renderSharedCard(books) {
+  const copies = books.map((book, i) => {
+    const loc    = getLocationLabel(book);
+    const badges = loc.map(l => `<span class="location-badge">${esc(l)}</span>`).join('');
+    const owner  = getOwnerGroup(book);
+    const ownerLabel = owner ? `<span class="duplicate-copy-label">${esc(owner)}</span>` : '';
+    return `<div class="duplicate-copy">
+      ${ownerLabel}
+      <div class="book-card-location">${badges || '<span class="location-badge" style="opacity:.5">ללא מיקום</span>'}</div>
+      <div class="book-card-actions">
+        <button class="btn-card-edit" data-action="edit" data-id="${book.id}">✏️ עריכה</button>
+        <button class="btn-card-delete" data-action="delete" data-id="${book.id}">🗑️ מחק</button>
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="book-card">
     <div class="book-card-top">
       <span class="book-card-title">${esc(books[0].name)}</span>
       <div class="book-card-authors">${books[0].author.split(',').map(a => a.trim()).filter(Boolean).map(a => `<button class="btn-author-filter" data-action="filter-author" data-author="${esc(a)}">${esc(a)}</button>`).join(', ')}</div>
@@ -458,27 +517,34 @@ function renderBooks() {
   empty.classList.add('hidden');
   container.className = 'books-grid';
 
-  // Build duplicate map based on books visible after filtering
-  const allDuplicateGroups = getDuplicateGroups();
   const bookIdSet = new Set(books.map(b => b.id));
-  const duplicateMap = new Map(); // bookId → [visible copies in group]
-  const secondaryIds = new Set(); // IDs to skip (shown via primary)
-  for (const group of allDuplicateGroups) {
-    const visibleCopies = group.filter(b => bookIdSet.has(b.id));
-    if (visibleCopies.length < 2) continue;
-    const primary = visibleCopies[0];
-    for (const book of visibleCopies) {
-      duplicateMap.set(book.id, visibleCopies);
-      if (book.id !== primary.id) secondaryIds.add(book.id);
+
+  function buildGroupMap(groups) {
+    const map = new Map();
+    const secondary = new Set();
+    for (const group of groups) {
+      const visible = group.filter(b => bookIdSet.has(b.id));
+      if (visible.length < 2) continue;
+      const primary = visible[0];
+      for (const book of visible) {
+        map.set(book.id, visible);
+        if (book.id !== primary.id) secondary.add(book.id);
+      }
     }
+    return { map, secondary };
   }
 
+  const { map: crossMap,     secondary: crossSecondary }     = buildGroupMap(getCrossOwnerGroups());
+  const { map: sameOwnerMap, secondary: sameOwnerSecondary } = buildGroupMap(getSameOwnerDuplicateGroups());
+
+  const secondaryIds = new Set([...crossSecondary, ...sameOwnerSecondary]);
   const displayBooks = books.filter(b => !secondaryIds.has(b.id));
   const loanedBookIds = new Set(db.loans.map(l => l.bookId));
 
   container.innerHTML = displayBooks.map(book => {
-    const group = duplicateMap.get(book.id);
-    return group ? renderDuplicateCard(group) : renderBookCard(book, loanedBookIds.has(book.id));
+    if (crossMap.has(book.id))     return renderSharedCard(crossMap.get(book.id));
+    if (sameOwnerMap.has(book.id)) return renderDuplicateCard(sameOwnerMap.get(book.id));
+    return renderBookCard(book, loanedBookIds.has(book.id));
   }).join('');
 }
 
@@ -1743,6 +1809,21 @@ document.addEventListener('DOMContentLoaded', () => {
         state.authorFilter = author;
       }
       render();
+    }
+    if (el.dataset.action === 'approve-duplicate') {
+      const ids = el.dataset.ids.split(',').map(Number);
+      showLoadingOverlay(true);
+      apiFetch('PATCH', '/api/books/approve-duplicate', { ids })
+        .then(() => {
+          ids.forEach(id => {
+            const book = db.books.find(b => b.id === id);
+            if (book) book.approvedDuplicate = true;
+          });
+          render();
+          showToast('הכפילות סומנה כמאושרת ✓', 'success');
+        })
+        .catch(err => showToast('שגיאה: ' + err.message, 'error'))
+        .finally(() => showLoadingOverlay(false));
     }
   });
 
