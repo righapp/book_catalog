@@ -10,7 +10,7 @@ const state = {
   seriesFilter: null,  // string | null
   authorFilter: null,  // string | null
   loanedOnly: false,
-  duplicatesOnly: false,
+  duplicatesOnly: null,  // null | 'all' | 'warning' | 'no-warning'
   mobileTab: 'catalog', // 'catalog' | 'manage' | 'loans' | 'wishlist'
   editingBookId: null,
   deletingBookId: null,
@@ -128,9 +128,14 @@ function sortBooks(books) {
 // ---- Filter & Search ----
 function getFilteredBooks() {
   const loanedBookIds    = state.loanedOnly    ? new Set(db.loans.map(l => l.bookId)) : null;
-  const duplicateBookIds = state.duplicatesOnly
-    ? new Set([...getCrossOwnerGroups(), ...getSameOwnerDuplicateGroups()].flatMap(g => g.map(b => b.id)))
-    : null;
+  let duplicateBookIds = null;
+  if (state.duplicatesOnly === 'all') {
+    duplicateBookIds = new Set([...getCrossOwnerGroups(), ...getSameOwnerDuplicateGroups(), ...getApprovedSameOwnerGroups()].flatMap(g => g.map(b => b.id)));
+  } else if (state.duplicatesOnly === 'warning') {
+    duplicateBookIds = new Set(getSameOwnerDuplicateGroups().flatMap(g => g.map(b => b.id)));
+  } else if (state.duplicatesOnly === 'no-warning') {
+    duplicateBookIds = new Set([...getCrossOwnerGroups(), ...getApprovedSameOwnerGroups()].flatMap(g => g.map(b => b.id)));
+  }
   return db.books.filter(book => {
     if (loanedBookIds    && !loanedBookIds.has(book.id))    return false;
     if (duplicateBookIds && !duplicateBookIds.has(book.id)) return false;
@@ -173,7 +178,7 @@ function clearAllFiltersAndSearch() {
   state.seriesFilter  = null;
   state.authorFilter  = null;
   state.loanedOnly    = false;
-  state.duplicatesOnly = false;
+  state.duplicatesOnly = null;
 }
 
 // ============================================================
@@ -306,18 +311,44 @@ function renderLocationTree() {
   }
 
   {
-    const dupCount = getDuplicateGroups().length;
+    const warningGroups   = getSameOwnerDuplicateGroups();
+    const noWarningGroups = [...getCrossOwnerGroups(), ...getApprovedSameOwnerGroups()];
+    const allDupCount     = warningGroups.length + noWarningGroups.length;
     const loanedRow = db.loans.length > 0
       ? `<div class="tree-all ${state.loanedOnly ? 'active' : ''}" data-action="filter-loaned">
           📤 ספרים מושאלים
           <span class="tree-count">${db.loans.length}</span>
         </div>`
       : '';
+    const dupOpen = state.duplicatesOnly !== null;
     html += `<div class="tree-section-title">סינון מיוחד</div>
     ${loanedRow}
-    <div class="tree-all ${state.duplicatesOnly ? 'active' : ''}" data-action="filter-duplicates">
-      ⚠️ ספרים כפולים
-      <span class="tree-count">${dupCount}</span>
+    <div class="tree-cabinet">
+      <div class="tree-cabinet-header ${dupOpen ? 'active' : ''}" data-action="filter-duplicates-toggle">
+        ⚠️ ספרים כפולים
+        <span class="tree-count">${allDupCount}</span>
+        <span class="tree-toggle ${dupOpen ? 'open' : ''}">▶</span>
+      </div>
+      <div class="tree-shelves ${dupOpen ? 'open' : ''}">
+        <div class="tree-shelf">
+          <div class="tree-shelf-header ${state.duplicatesOnly === 'all' ? 'active' : ''}" data-action="filter-duplicates-all">
+            כל הכפולים
+            <span class="tree-count">${allDupCount}</span>
+          </div>
+        </div>
+        <div class="tree-shelf">
+          <div class="tree-shelf-header ${state.duplicatesOnly === 'warning' ? 'active' : ''}" data-action="filter-duplicates-warning">
+            כפולים עם אזהרה
+            <span class="tree-count">${warningGroups.length}</span>
+          </div>
+        </div>
+        <div class="tree-shelf">
+          <div class="tree-shelf-header ${state.duplicatesOnly === 'no-warning' ? 'active' : ''}" data-action="filter-duplicates-no-warning">
+            כפולים ללא אזהרה
+            <span class="tree-count">${noWarningGroups.length}</span>
+          </div>
+        </div>
+      </div>
     </div>`;
   }
 
@@ -1787,7 +1818,7 @@ document.addEventListener('DOMContentLoaded', () => {
     state.seriesFilter = null;
     state.authorFilter = null;
     state.loanedOnly     = false;
-    state.duplicatesOnly = false;
+    state.duplicatesOnly = null;
     render();
   });
 
@@ -1806,12 +1837,18 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } else if (action === 'filter-loaned') {
       state.loanedOnly = !state.loanedOnly;
-    } else if (action === 'filter-duplicates') {
-      state.duplicatesOnly = !state.duplicatesOnly;
+    } else if (action === 'filter-duplicates-toggle') {
+      state.duplicatesOnly = state.duplicatesOnly !== null ? null : 'all';
+    } else if (action === 'filter-duplicates-all') {
+      state.duplicatesOnly = state.duplicatesOnly === 'all' ? null : 'all';
+    } else if (action === 'filter-duplicates-warning') {
+      state.duplicatesOnly = state.duplicatesOnly === 'warning' ? null : 'warning';
+    } else if (action === 'filter-duplicates-no-warning') {
+      state.duplicatesOnly = state.duplicatesOnly === 'no-warning' ? null : 'no-warning';
     } else if (action === 'filter-all') {
       state.filter = { cabinetId: null, shelfId: null, rowId: null, layerId: null, owner: null };
       state.loanedOnly    = false;
-      state.duplicatesOnly = false;
+      state.duplicatesOnly = null;
     } else if (action === 'filter-cabinet') {
       const id = parseInt(el.dataset.id);
       if (state.filter.cabinetId === id && !state.filter.shelfId) {
@@ -2601,7 +2638,7 @@ document.addEventListener('DOMContentLoaded', () => {
     state.seriesFilter  = null;
     state.authorFilter  = null;
     state.loanedOnly    = false;
-    state.duplicatesOnly = false;
+    state.duplicatesOnly = null;
     state.search = '';
     document.getElementById('searchInput').value = '';
     document.getElementById('searchClear').classList.remove('visible');
